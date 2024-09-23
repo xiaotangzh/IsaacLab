@@ -54,6 +54,8 @@ class DeformableObjectData:
         self._nodal_pos_w = TimestampedBuffer()
         self._nodal_vel_w = TimestampedBuffer()
         self._nodal_state_w = TimestampedBuffer()
+        # -- mean pose of the simulation mesh
+        self._root_pose_w = TimestampedBuffer()
         # -- mesh element-wise rotations
         self._sim_element_quat_w = TimestampedBuffer()
         self._collision_element_quat_w = TimestampedBuffer()
@@ -99,6 +101,20 @@ class DeformableObjectData:
     ##
     # Properties.
     ##
+
+    @property
+    def root_pose_w(self) -> torch.Tensor:
+        """Root pose of the deformable bodies in simulation world frame. Shape is (num_instances, 7).
+
+        The pose is stored as a quaternion in the order (w, x, y, z) followed by the position.
+        """
+        if self._root_pose_w.timestamp < self._sim_timestamp:
+            pose = self._root_physx_view.get_transforms().clone()
+            pose[:, 3:7] = math_utils.convert_quat(pose[:, 3:7], to="wxyz")
+            # set the buffer timestamp
+            self._root_pose_w.data = pose
+            self._root_pose_w.timestamp = self._sim_timestamp
+        return self._root_pose_w.data
 
     @property
     def nodal_pos_w(self):
@@ -221,12 +237,19 @@ class DeformableObjectData:
 
     @property
     def root_pos_w(self) -> torch.Tensor:
-        """Root position from nodal positions of the simulation mesh for the deformable bodies in simulation world frame.
-        Shape is (num_instances, 3).
+        """Root position in simulation world frame. Shape is (num_instances, 3).
 
-        This quantity is computed as the mean of the nodal positions.
+        This quantity is computed as the mean of the nodal positions of the simulation mesh.
         """
-        return self.nodal_pos_w.mean(dim=1)
+        return self.root_pose_w[:, :3]
+
+    @property
+    def root_quat_w(self) -> torch.Tensor:
+        """Root orientation (w, x, y, z) in simulation world frame. Shape is (num_instances, 4).
+
+        This quantity is computed as the orientation of the simulation mesh.
+        """
+        return self.root_pose_w[:, 3:7]
 
     @property
     def root_vel_w(self) -> torch.Tensor:
