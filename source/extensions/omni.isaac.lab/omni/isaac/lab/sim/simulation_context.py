@@ -24,7 +24,6 @@ import omni.physx
 import omni.timeline
 import omni.usd
 from omni.isaac.core.utils.viewports import set_camera_view
-from omni.isaac.version import get_version
 from pxr import Gf, PhysxSchema, Sdf, Usd, UsdGeom, UsdPhysics, UsdUtils
 
 from .simulation_cfg import SimulationCfg
@@ -172,7 +171,7 @@ class SimulationContext:
             self.render_mode = self.RenderMode.FULL_RENDERING
             # acquire viewport context
             self._viewport_context = get_active_viewport()
-            self._viewport_context.updates_enabled = True  # pyright: ignore [reportOptionalMemberAccess]
+            self._viewport_context.updates_enabled = True  # type: ignore
             # acquire viewport window
             # TODO @mayank: Why not just use get_active_viewport_and_window() directly?
             self._viewport_window = ui.Workspace.get_window("Viewport")
@@ -193,9 +192,6 @@ class SimulationContext:
         # this is needed for some GUI features
         if self._has_gui:
             self.cfg.enable_scene_query_support = True
-        # read isaac sim version (this includes build tag, release tag etc.)
-        # note: we do it once here because it reads the VERSION file from disk and is not expected to change.
-        self._isaacsim_version = get_version()
 
         # create a tensor for gravity
         # note: this line is needed to create a "tensor" in the device to avoid issues with torch 2.1 onwards.
@@ -215,16 +211,14 @@ class SimulationContext:
         else:
             self._app_control_on_stop_handle = None
 
-        # check that we are not playing the simulation
-        if self.is_playing():
-            carb.log_warn("Simulation is already playing. Stopping the simulation.")
-            self.stop()
-        # obtain the simulation app-related interfaces
+        # obtain the simulation interfaces
         self._app = omni.kit.app.get_app_interface()
         self._timeline = omni.timeline.get_timeline_interface()
         self._loop_runner = omni_loop.acquire_loop_interface()
         self._physx_sim_iface = omni.physx.get_physx_simulation_interface()
 
+        # create a dummy physics simulation view
+        self._physics_sim_view = None
         # set the simulation to auto-update
         self._timeline.set_auto_update(True)
         # set simulation parameters
@@ -323,6 +317,11 @@ class SimulationContext:
         * Patch version (int): This is the patch number of the release (e.g. 0).
 
         """
+        if not hasattr(self, "_isaacsim_version"):
+            import omni.isaac.version
+
+            self._isaacsim_version = omni.isaac.version.get_version()
+
         return int(self._isaacsim_version[2]), int(self._isaacsim_version[3]), int(self._isaacsim_version[4])
 
     """
@@ -492,7 +491,7 @@ class SimulationContext:
                 self._physx_fabric_iface.attach_stage(stage_id)
 
             # play the simulation to reset the physics simulation
-            self._timeline.play()
+            self.play()
             # perform one simulation step to initialize the physics simulation
             self.step(render=True)
 
@@ -645,14 +644,15 @@ class SimulationContext:
                 break
         # create physics scene if it doesn't exist
         if not physics_scene_prim:
-            physics_scene_api = UsdPhysics.Scene.Define(self.stage, self.cfg.physics_prim_path)
+            physics_scene_prim = self.stage.DefinePrim(self.cfg.physics_prim_path, "PhysicsScene")
             physx_scene_api = PhysxSchema.PhysxSceneAPI.Apply(physics_scene_prim)
         else:
-            physics_scene_api = UsdPhysics.Scene(physics_scene_prim)
-            if physics_scene_api.HasAPI(PhysxSchema.PhysxSceneAPI):
+            if physics_scene_prim.HasAPI(PhysxSchema.PhysxSceneAPI):
                 physx_scene_api = PhysxSchema.PhysxSceneAPI(physics_scene_prim)
             else:
                 physx_scene_api = PhysxSchema.PhysxSceneAPI.Apply(physics_scene_prim)
+        # convert the prim to physics scene
+        physics_scene_api = UsdPhysics.Scene(physics_scene_prim)
 
         # resolve the simulation device
         self.cfg.device = self._resolve_simulation_device(self.cfg.device)
@@ -794,7 +794,7 @@ class SimulationContext:
             # -- max soft body contacts
             physx_scene_api.CreateGpuMaxSoftBodyContactsAttr(self.cfg.physx.gpu_max_soft_body_contacts)
             # -- max particle contacts
-            physx_scene_api.CreateGpuMaxParticlesContactsAttr(self.cfg.physx.gpu_max_particle_contacts)
+            physx_scene_api.CreateGpuMaxParticleContactsAttr(self.cfg.physx.gpu_max_particle_contacts)
 
         # Physics time-step
         if self.cfg.render_interval <= 0:
