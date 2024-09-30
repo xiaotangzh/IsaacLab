@@ -338,7 +338,7 @@ class SimulationContext:
         """Set the location and target of the viewport camera in the stage.
 
         Note:
-            This is a wrapper around the :math:`omni.isaac.core.utils.viewports.set_camera_view` function.
+            This is a wrapper around the :meth:`omni.isaac.core.utils.viewports.set_camera_view` function.
             It is provided here for convenience to reduce the amount of imports needed.
 
         Args:
