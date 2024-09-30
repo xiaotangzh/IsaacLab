@@ -34,13 +34,13 @@ class PhysxCfg:
 
     """
 
-    solver_type: Literal[0, 1] = 1
-    """The type of solver to use.Default is 1 (TGS).
+    solver_type: Literal["PGS", "TGS"] = "TGS"
+    """The type of solver to use.Default is TGS.
 
     Available solvers:
 
-    * :obj:`0`: PGS (Projective Gauss-Seidel)
-    * :obj:`1`: TGS (Truncated Gauss-Seidel)
+    * PGS: Projective Gauss-Seidel
+    * TGS: Truncated Gauss-Seidel
     """
 
     min_position_iteration_count: int = 1

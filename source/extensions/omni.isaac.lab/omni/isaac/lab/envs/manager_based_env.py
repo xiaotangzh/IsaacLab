@@ -333,8 +333,7 @@ class ManagerBasedEnv:
             del self.observation_manager
             del self.event_manager
             del self.scene
-            # clear callbacks and instance
-            self.sim.clear_all_callbacks()
+            # clear sim instance
             self.sim.clear_instance()
             # destroy the window
             if self._window is not None:

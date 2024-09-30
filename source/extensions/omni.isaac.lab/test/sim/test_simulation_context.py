@@ -99,11 +99,6 @@ class TestSimulationContext(unittest.TestCase):
         simulation context.
         """
         sim = SimulationContext()
-        # manually set the boundedness to 1? -- this is not possible because of Isaac Sim.
-        sim.clear_all_callbacks()
-        sim._stage_open_callback = None
-        sim._physics_timer_callback = None
-        sim._event_timer_callback = None
 
         # check that boundedness of simulation context is correct
         sim_ref_count = ctypes.c_long.from_address(id(sim)).value

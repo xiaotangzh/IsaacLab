@@ -80,7 +80,6 @@ class TestFrameTransformer(unittest.TestCase):
         # stop simulation
         # self.sim.stop()
         # clear the stage
-        self.sim.clear_all_callbacks()
         self.sim.clear_instance()
 
     """

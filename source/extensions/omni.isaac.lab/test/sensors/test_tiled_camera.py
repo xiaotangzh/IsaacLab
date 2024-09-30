@@ -66,7 +66,6 @@ class TestTiledCamera(unittest.TestCase):
         # note: cannot use self.sim.stop() since it does one render step after stopping!! This doesn't make sense :(
         self.sim._timeline.stop()
         # clear the stage
-        self.sim.clear_all_callbacks()
         self.sim.clear_instance()
 
     """

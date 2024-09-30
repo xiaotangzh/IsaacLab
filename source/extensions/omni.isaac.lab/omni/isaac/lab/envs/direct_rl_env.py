@@ -455,8 +455,7 @@ class DirectRLEnv(gym.Env):
             del self.scene
             if self.viewport_camera_controller is not None:
                 del self.viewport_camera_controller
-            # clear callbacks and instance
-            self.sim.clear_all_callbacks()
+            # clear sim instance
             self.sim.clear_instance()
             # destroy the window
             if self._window is not None:
