@@ -199,18 +199,6 @@ class SimulationContext:
         #   you can reproduce the issue by commenting out this line and running the test `test_articulation.py`.
         self._gravity_tensor = torch.tensor(self.cfg.gravity, dtype=torch.float32, device=self.cfg.device)
 
-        # add callback to deal the simulation app when simulation is stopped.
-        # this is needed because physics views go invalid once we stop the simulation
-        if not builtins.ISAAC_LAUNCHED_FROM_TERMINAL:
-            timeline_event_stream = omni.timeline.get_timeline_interface().get_timeline_event_stream()
-            self._app_control_on_stop_handle = timeline_event_stream.create_subscription_to_pop_by_type(
-                int(omni.timeline.TimelineEventType.STOP),
-                lambda *args, obj=weakref.proxy(self): obj._app_control_on_stop_callback(*args),
-                order=15,
-            )
-        else:
-            self._app_control_on_stop_handle = None
-
         # obtain the simulation interfaces
         self._app = omni.kit.app.get_app_interface()
         self._timeline = omni.timeline.get_timeline_interface()
@@ -221,10 +209,42 @@ class SimulationContext:
         self._physics_sim_view = None
         # set the simulation to auto-update
         self._timeline.set_auto_update(True)
+
         # set simulation parameters
         self._backend = "torch"
-        # set parameters for physics simulation
         self._init_stage()
+
+        # counters for tracking simulation time
+        self._num_steps = 0
+        self._current_time = 0.0
+        # add a callback to update these counters on simulation stepping
+        # -- reset timer
+        self._internal_timer_reset_handle = omni.physx.get_physx_interface().subscribe_physics_step_events(
+            lambda *args, obj=weakref.proxy(self): obj._timer_reset_callback(*args),
+        )
+        # -- update timer
+        timeline_event_stream = omni.timeline.get_timeline_interface().get_timeline_event_stream()
+        self._internal_timer_update_handle = timeline_event_stream.create_subscription_to_pop_by_type(
+            int(omni.timeline.TimelineEventType.STOP),
+            lambda *args, obj=weakref.proxy(self): obj._timer_update_callback(*args),
+        )
+
+        # add callback to deal with user opening a new simulation stage
+        stage_event_stream = omni.usd.get_context().get_stage_event_stream()
+        self._invalidate_sim_context_handle =  stage_event_stream.create_subscription_to_pop_by_type(
+            int(omni.usd.StageEventType.OPENED), self._invalidate_sim_context_callback
+        )
+
+        # add callback to deal the simulation app when simulation is stopped.
+        # this is needed because physics views go invalid once we stop the simulation
+        if not builtins.ISAAC_LAUNCHED_FROM_TERMINAL:
+            self._app_control_on_stop_handle = timeline_event_stream.create_subscription_to_pop_by_type(
+                int(omni.timeline.TimelineEventType.STOP),
+                lambda *args, obj=weakref.proxy(self): obj._app_control_on_stop_callback(*args),
+                order=15,
+            )
+        else:
+            self._app_control_on_stop_handle = None
 
     def __new__(cls, *args, **kwargs) -> SimulationContext:
         """Creates a new instance of the simulation context.
@@ -354,7 +374,7 @@ class SimulationContext:
         Please see :class:`RenderMode` for more information on the different render modes.
 
         .. note::
-            When no GUI is available (locally or livestreamed), we do not need to choose whether the viewport
+            When no GUI is available (locally or live-streamed), we do not need to choose whether the viewport
             needs to render or not (since there is no GUI). Thus, in this case, calling the function will not
             change the render mode.
 
@@ -458,54 +478,42 @@ class SimulationContext:
     def stop(self) -> None:
         """Stops the simulation."""
         self._timeline.stop()
-        # detach the stage from physics simulation
-        self._physx_sim_iface.detach_stage()
-        if self._physx_fabric_iface is not None:
-            self._physx_fabric_iface.detach_stage()
         # perform additional render to update the UI
         self.render()
 
-    def reset(self, soft: bool = False):
+    """
+    Operations - Stepping.
+    """
+
+    def reset(self):
         """Resets and initializes the simulation.
 
         This method initializes the handles for the physics simulation and the rendering components.
 
-        In a soft reset, the simulation is not stopped and the physics simulation is not reset. This is useful when
-        you want to reset the simulation without stopping the simulation.
-
-        Args:
-            soft: Whether to perform a soft reset. Defaults to False.
+        .. attention::
+            This method must be called once after designing the simulation scene (USD stage).
         """
-        if not soft:
-            # stop the simulation if it is running to reset
-            if not self.is_stopped():
-                carb.log_warn("Stopping the simulation before resetting.")
-                self.stop()
-            # attach the USD stage to physics simulation
-            # note: we detach first to ensure that the stage is not attached multiple times
-            stage_id = UsdUtils.StageCache.Get().GetId(self.stage).ToLongInt()
-            # -- simulation interface
-            self._physx_sim_iface.attach_stage(stage_id)
-            # -- fabric interface
-            if self._physx_fabric_iface is not None:
-                self._physx_fabric_iface.attach_stage(stage_id)
+        # attach the USD stage to physics simulation
+        # note: we detach first to ensure that the stage is not attached multiple times
+        stage_id = UsdUtils.StageCache.Get().GetId(self.stage).ToLongInt()
+        # -- simulation interface
+        self._physx_sim_iface.detach_stage()
+        self._physx_sim_iface.attach_stage(stage_id)
+        # -- fabric interface
+        if self._physx_fabric_iface is not None:
+            self._physx_fabric_iface.detach_stage()
+            self._physx_fabric_iface.attach_stage(stage_id)
 
-            # play the simulation to reset the physics simulation
-            self.play()
-            # perform one simulation step to initialize the physics simulation
-            self.step(render=True)
+        # warm start to parse the simulation stage
+        self._physx_sim_iface.simulate(self.cfg.dt, 0.0)
+        self._physx_sim_iface.fetch_results()
 
-            # create physics simulation view
-            self._physics_sim_view = omni.physics.tensors.create_simulation_view(self.backend)
-            self._physics_sim_view.set_subspace_roots("/")
+        # create physics simulation view
+        self._physics_sim_view = omni.physics.tensors.create_simulation_view(self.backend)
+        self._physics_sim_view.set_subspace_roots("/")
 
-            # perform additional rendering steps to warm up replicator buffers
-            # this is only needed for the first time we set the simulation
-            for _ in range(2):
-                self.render()
-        else:
-            if not hasattr(self, "_physics_sim_view"):
-                raise RuntimeError("Physics simulation view does not exist. Please perform a hard reset.")
+        # play the simulation to initialize all timeline-related handles
+        self.play()
 
     def step(self, render: bool = True):
         """Steps the simulation.
@@ -529,7 +537,7 @@ class SimulationContext:
             # reason: physics has to parse the scene again and inform other extensions like hydra-delegate.
             #   without this the app becomes unresponsive.
             # FIXME: This steps physics as well, which we is not good in general.
-            self.app.update()
+            self._app.update()
 
         # step the simulation
         if render:
@@ -539,7 +547,7 @@ class SimulationContext:
             else:
                 self._app.update()
         else:
-            self._physx_sim_iface.simulate(self.cfg.dt, 0.0)
+            self._physx_sim_iface.simulate(self.cfg.dt, self._current_time)
             self._physx_sim_iface.fetch_results()
 
     def render(self, mode: RenderMode | None = None):
@@ -573,11 +581,13 @@ class SimulationContext:
                 self.set_setting("/app/player/playSimulations", True)
         else:
             # manually flush the fabric data to update Hydra textures
-            if self._physx_fabric_iface is not None:
-                if self._physics_sim_view is not None and self.is_playing():
-                    # Update the articulations' link's poses before rendering
+            if self._physx_fabric_iface is not None and self.is_playing():
+                # update the articulations' link's poses before rendering
+                # this is only possible in direct GPU pipeline with Fabric enabled
+                if "cuda" in self.cfg.device:
                     self._physics_sim_view.update_articulations_kinematic()
-                self._update_fabric(0.0, 0.0)
+                # flush fabric data to the renderer
+                self._update_fabric(self.cfg.dt, self._current_time)
             # render the simulation
             # note: we don't call super().render() anymore because they do above operation inside
             #  and we don't want to do it twice. We may remove it once we drop support for Isaac Sim 2022.2.
@@ -606,6 +616,16 @@ class SimulationContext:
             if cls._instance._app_control_on_stop_handle is not None:
                 cls._instance._app_control_on_stop_handle.unsubscribe()
                 cls._instance._app_control_on_stop_handle = None
+            # clear callback for internal timers
+            if cls._instance._internal_timer_reset_handle is not None:
+                cls._instance._internal_timer_reset_handle.unsubscribe()
+                cls._instance._internal_timer_reset_handle = None
+            if cls._instance._internal_timer_update_handle is not None:
+                cls._instance._internal_timer_update_handle = None
+            # clear callback for stage events
+            if cls._instance._invalidate_sim_context_handle is not None:
+                cls._instance._invalidate_sim_context_handle.unsubscribe()
+                cls._instance._invalidate_sim_context_handle = None
             # detach the stage from physics simulation
             cls._instance._physx_sim_iface.detach_stage()
             if cls._instance._physx_fabric_iface is not None:
@@ -940,6 +960,26 @@ class SimulationContext:
         # App shutdown is disabled to prevent crashes on shutdown. Terminating carb is faster
         # self._app.shutdown()
         self._framework.unload_all_plugins()
+
+    def _timer_reset_callback(self, event: carb.events.IEvent):
+        """Callback to reset the internal timers when the simulation is stopped."""
+        self._current_time = 0
+        self._num_steps = 0
+
+    def _timer_update_callback(self, elapsed_dt: float):
+        """Callback to update the internal timer when the simulation is updated."""
+        self._current_time += elapsed_dt
+        self._num_steps += 1
+        return
+
+    def _invalidate_sim_context_callback(self, event: carb.events.IEvent):
+        if SimulationContext._instance is not None:
+            SimulationContext._instance.clear_instance()
+            carb.log_warn(
+                "A new stage was opened. The current simulation context is invalidated."
+                " Please construct the simulation context instance again before using it."
+            )
+
 
 
 ##
