@@ -169,8 +169,15 @@ class Imu(SensorBase):
         )
 
         # numerical derivative
-        lin_acc_w = (lin_vel_w - self._prev_lin_vel_w[env_ids]) / self._dt + self._gravity_bias_w[env_ids]
-        ang_acc_w = (ang_vel_w - self._prev_ang_vel_w[env_ids]) / self._dt
+        # lin_acc_w = (lin_vel_w - self._prev_lin_vel_w[env_ids]) / self._dt + self._gravity_bias_w[env_ids]
+        # ang_acc_w = (ang_vel_w - self._prev_ang_vel_w[env_ids]) / self._dt
+
+        lin_acc_w, ang_acc_w = self._view.get_accelerations()[env_ids].split([3, 3], dim=-1)
+        lin_acc_w += self._gravity_bias_w[env_ids]
+
+        lin_acc_w += torch.cross(ang_acc_w, math_utils.quat_rotate(quat_w, self._offset_pos_b[env_ids] - com_pos_b[env_ids]), dim=-1) + torch.cross(
+            ang_vel_w, torch.cross(ang_vel_w, math_utils.quat_rotate(quat_w, self._offset_pos_b[env_ids] - com_pos_b[env_ids]), dim=-1), dim=-1
+        )
         # store the velocities
         self._data.lin_vel_b[env_ids] = math_utils.quat_rotate_inverse(self._data.quat_w[env_ids], lin_vel_w)
         self._data.ang_vel_b[env_ids] = math_utils.quat_rotate_inverse(self._data.quat_w[env_ids], ang_vel_w)
