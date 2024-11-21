@@ -148,8 +148,9 @@ GPU simulation and require a mesh object to be spawned with the deformable body 
 
 Attention!
 
-Please take note that the code above spawns objects individually. In later tutorials we will use similar, but slightly
-different configuration classes that vectorize this process, making it easier to work with multiple objects.
+Please take note that in this tutorial we take advantage of a sample Cgf class, ConeCgf class as an introduction to spawning prims. 
+As the tutorials progress we will use progressively more sophisticated ways of configuring and managing prims. 
+These other methods facilitate environment vectorization, environment setup and teardown, and allow you to instantiate a wider variety of objects.
 
 Spawning from another file
 --------------------------
