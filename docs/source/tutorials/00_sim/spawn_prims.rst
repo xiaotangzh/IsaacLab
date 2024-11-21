@@ -149,9 +149,9 @@ GPU simulation and require a mesh object to be spawned with the deformable body 
 
 .. attention::
 
-Please take note that in this tutorial we take advantage of a sample Cfg class, ConeCfg class as an introduction to spawning prims. 
-As the tutorials progress we will use progressively more sophisticated ways of configuring and managing prims. 
-These other methods facilitate environment vectorization, environment setup and teardown, and allow you to instantiate a wider variety of objects.
+   Please take note that in this tutorial we take advantage of a sample Cfg class, ConeCfg as an introduction to spawning prims. 
+   As the tutorials progress we will use progressively more sophisticated ways of configuring and managing prims. 
+   These other methods facilitate environment vectorization, environment setup and teardown, and allow you to instantiate a wider variety of objects.
 
 Spawning from another file
 --------------------------
