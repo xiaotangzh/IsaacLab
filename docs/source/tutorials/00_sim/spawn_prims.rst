@@ -146,6 +146,11 @@ GPU simulation and require a mesh object to be spawned with the deformable body 
    :start-at: # spawn a blue cuboid with deformable body
    :end-before: # spawn a usd file of a table into the scene
 
+Attention!
+
+Please take note that the code above spawns objects individually. In later tutorials we will use similar, but slightly
+different configuration classes that vectorize this process, making it easier to work with multiple objects.
+
 Spawning from another file
 --------------------------
 
