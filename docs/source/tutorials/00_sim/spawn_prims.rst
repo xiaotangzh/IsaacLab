@@ -146,9 +146,10 @@ GPU simulation and require a mesh object to be spawned with the deformable body 
    :start-at: # spawn a blue cuboid with deformable body
    :end-before: # spawn a usd file of a table into the scene
 
-Attention!
 
-Please take note that in this tutorial we take advantage of a sample Cgf class, ConeCgf class as an introduction to spawning prims. 
+.. attention::
+
+Please take note that in this tutorial we take advantage of a sample Cfg class, ConeCfg class as an introduction to spawning prims. 
 As the tutorials progress we will use progressively more sophisticated ways of configuring and managing prims. 
 These other methods facilitate environment vectorization, environment setup and teardown, and allow you to instantiate a wider variety of objects.
 
