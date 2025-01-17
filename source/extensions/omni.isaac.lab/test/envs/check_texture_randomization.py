@@ -33,6 +33,8 @@ simulation_app = app_launcher.app
 import math
 import torch
 
+from omni.isaac.lab.assets import AssetBaseCfg
+import omni.isaac.lab.sim as sim_utils
 import omni.isaac.lab.envs.mdp as mdp
 from omni.isaac.lab_tasks.manager_based.classic.cartpole.cartpole_env_cfg import CartpoleSceneCfg
 from omni.isaac.lab.utils.assets import NVIDIA_NUCLEUS_DIR
@@ -134,6 +136,14 @@ class CartpoleEnvCfg(ManagerBasedEnvCfg):
         # simulation settings
         self.sim.dt = 0.005  # sim step every 5ms: 200Hz
 
+        self.scene.ligh1 = AssetBaseCfg(
+            prim_path="/World/Dome",
+            spawn=sim_utils.DomeLightCfg(
+                color=(0.5, 0.5, 0.5),
+                intensity=2000.0,
+        )
+    )
+
 
 def main():
     """Main function."""
@@ -141,6 +151,8 @@ def main():
     env_cfg = CartpoleEnvCfg()
     env_cfg.scene.num_envs = args_cli.num_envs
     env_cfg.scene.replicate_physics = args_cli.replicate_physics
+
+    
 
     # setup base environment
     env = ManagerBasedEnv(cfg=env_cfg)
