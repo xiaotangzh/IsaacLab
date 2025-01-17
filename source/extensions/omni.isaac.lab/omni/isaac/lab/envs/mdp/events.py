@@ -195,6 +195,11 @@ class randomize_visual_texture_material(ManagerTermBase):
         texture_paths = cfg.params.get("texture_paths")
         event_name = cfg.params.get("event_name")
         texture_rotation = cfg.params.get("texture_rotation", (0.0, 0.0))
+        replicate_physics = cfg.params.get("replicate_physics")
+
+        # check to make sure replicate_physics is set to False, else raise warning
+        if replicate_physics == True:
+            raise Warning("replicate_physics is set to True, meaning all environments will have same textures applied.")
 
         # convert from radians to degrees
         texture_rotation = tuple(math.degrees(angle) for angle in texture_rotation)
@@ -222,7 +227,6 @@ class randomize_visual_texture_material(ManagerTermBase):
                 )
 
             return prims_group.node
-
         # Register the event to the replicator
         with rep.trigger.on_custom_event(event_name=event_name):
             rep_texture_randomization()
@@ -233,8 +237,9 @@ class randomize_visual_texture_material(ManagerTermBase):
         env_ids: torch.Tensor,
         event_name: str,
         asset_cfg: SceneEntityCfg,
+        replicate_physics: bool,
         texture_paths: list[str],
-        texture_rotation: tuple[float, float] = (0.0, 0.0),
+        texture_rotation: tuple[float, float] = (0.0, 0.0)
     ):
         # import replicator
         import omni.replicator.core as rep
@@ -243,6 +248,7 @@ class randomize_visual_texture_material(ManagerTermBase):
         # note: This triggers the nodes for all the environments.
         #   We need to investigate how to make it happen only for a subset based on env_ids.
         rep.utils.send_og_event(event_name)
+        
 
 
 def randomize_rigid_body_mass(
@@ -707,13 +713,13 @@ def push_by_setting_velocity(
     asset: RigidObject | Articulation = env.scene[asset_cfg.name]
 
     # velocities
-    vel_w = asset.data.root_vel_w[env_ids]
+    vel_w = asset.data.root_com_vel_w[env_ids]
     # sample random velocities
     range_list = [velocity_range.get(key, (0.0, 0.0)) for key in ["x", "y", "z", "roll", "pitch", "yaw"]]
     ranges = torch.tensor(range_list, device=asset.device)
     vel_w += math_utils.sample_uniform(ranges[:, 0], ranges[:, 1], vel_w.shape, device=asset.device)
     # set the velocities into the physics simulation
-    asset.write_root_velocity_to_sim(vel_w, env_ids=env_ids)
+    asset.write_root_com_velocity_to_sim(vel_w, env_ids=env_ids)
 
 
 def reset_root_state_uniform(
@@ -809,8 +815,8 @@ def reset_root_state_with_random_orientation(
     velocities = root_states[:, 7:13] + rand_samples
 
     # set into the physics simulation
-    asset.write_root_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=env_ids)
-    asset.write_root_velocity_to_sim(velocities, env_ids=env_ids)
+    asset.write_root_link_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=env_ids)
+    asset.write_root_com_velocity_to_sim(velocities, env_ids=env_ids)
 
 
 def reset_root_state_from_terrain(
@@ -876,8 +882,8 @@ def reset_root_state_from_terrain(
     velocities = asset.data.default_root_state[:, 7:13] + rand_samples
 
     # set into the physics simulation
-    asset.write_root_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=env_ids)
-    asset.write_root_velocity_to_sim(velocities, env_ids=env_ids)
+    asset.write_root_link_pose_to_sim(torch.cat([positions, orientations], dim=-1), env_ids=env_ids)
+    asset.write_root_com_velocity_to_sim(velocities, env_ids=env_ids)
 
 
 def reset_joints_by_scale(
