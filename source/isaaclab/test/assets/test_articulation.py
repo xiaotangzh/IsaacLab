@@ -1130,7 +1130,7 @@ class TestArticulation(unittest.TestCase):
         for num_articulations in (1, 2):
             for device in ("cuda:0", "cpu"):
                 for with_offset in [True, False]:
-                    for state_location in ("com", "link"):
+                    for state_location in ("default", "com", "link"):
                         with self.subTest(
                             num_articulations=num_articulations,
                             device=device,
@@ -1189,11 +1189,18 @@ class TestArticulation(unittest.TestCase):
                                             articulation.write_root_link_state_to_sim(rand_state)
                                         else:
                                             articulation.write_root_link_state_to_sim(rand_state, env_ids=env_idx)
+                                    elif state_location == "default":
+                                        if i % 2 == 0:
+                                            articulation.write_root_state_to_sim(rand_state)
+                                        else:
+                                            articulation.write_root_state_to_sim(rand_state, env_ids=env_idx)
 
                                     if state_location == "com":
                                         torch.testing.assert_close(rand_state, articulation.data.root_com_state_w)
                                     elif state_location == "link":
                                         torch.testing.assert_close(rand_state, articulation.data.root_link_state_w)
+                                    elif state_location == "default":
+                                        torch.testing.assert_close(rand_state, articulation.data.root_state_w)
 
     def test_transform_inverses(self):
         """Test if math utilities are true inverses of each other."""

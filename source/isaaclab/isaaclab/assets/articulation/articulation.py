@@ -334,7 +334,7 @@ class Articulation(AssetBase):
         root_poses_xyzw = self._data.root_state_w[:, :7].clone()
         root_poses_xyzw[:, 3:] = math_utils.convert_quat(root_poses_xyzw[:, 3:], to="xyzw")
         # Need to invalidate the buffer to trigger the update with the new root pose.
-        self._data._body_state_w.timestamp = -1.0
+        self._invalidate_state_buffers()
         # set into simulation
         self.root_physx_view.set_root_transforms(root_poses_xyzw, indices=physx_env_ids)
 
@@ -360,9 +360,7 @@ class Articulation(AssetBase):
         root_poses_xyzw = self._data.root_link_state_w[:, :7].clone()
         root_poses_xyzw[:, 3:] = math_utils.convert_quat(root_poses_xyzw[:, 3:], to="xyzw")
         # Need to invalidate the buffer to trigger the update with the new root pose.
-        self._data._body_state_w.timestamp = -1.0
-        self._data._body_link_state_w.timestamp = -1.0
-        self._data._body_com_state_w.timestamp = -1.0
+        self._invalidate_state_buffers()
         # set into simulation
         self.root_physx_view.set_root_transforms(root_poses_xyzw, indices=physx_env_ids)
 
@@ -498,9 +496,7 @@ class Articulation(AssetBase):
         self._data._previous_joint_vel[env_ids, joint_ids] = velocity
         self._data.joint_acc[env_ids, joint_ids] = 0.0
         # Need to invalidate the buffer to trigger the update with the new root pose.
-        self._data._body_state_w.timestamp = -1.0
-        # self._data._body_link_state_w.timestamp = -1.0
-        # self._data._body_com_state_w.timestamp = -1.0
+        self._invalidate_state_buffers()
         # set into simulation
         self.root_physx_view.set_dof_positions(self._data.joint_pos, indices=physx_env_ids)
         self.root_physx_view.set_dof_velocities(self._data.joint_vel, indices=physx_env_ids)
@@ -1557,3 +1553,14 @@ class Articulation(AssetBase):
                 ])
             # convert table to string
             omni.log.info(f"Simulation parameters for tendons in {self.cfg.prim_path}:\n" + tendon_table.get_string())
+
+    def _invalidate_state_buffers(self):
+        """Invalidate body and root state buffers.
+
+        This is used after writing state information to physx."""
+        self._data._body_state_w.timestamp = -1.0
+        self._data._body_link_state_w.timestamp = -1.0
+        self._data._body_com_state_w.timestamp = -1.0
+        self._data._root_state_w.timestamp = -1.0
+        self._data._root_link_state_w.timestamp = -1.0
+        self._data._root_com_state_w.timestamp = -1.0
