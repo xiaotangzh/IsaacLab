@@ -9,7 +9,7 @@ import os
 from dataclasses import MISSING
 
 from isaaclab_assets import HUMANOID_28_CFG
-
+from isaaclab_assets.robots.smpl import SMPLX_CFG
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectRLEnvCfg
@@ -72,18 +72,19 @@ class HumanoidAmpEnvCfg(DirectRLEnvCfg):
             ),
         },
     )
+    # robot: ArticulationCfg = SMPLX_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
 
 @configclass
 class HumanoidAmpDanceEnvCfg(HumanoidAmpEnvCfg):
-    motion_file = os.path.join(MOTIONS_DIR, "humanoid_dance.npz")
+    motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_dance.npz")
 
 
 @configclass
 class HumanoidAmpRunEnvCfg(HumanoidAmpEnvCfg):
-    motion_file = os.path.join(MOTIONS_DIR, "humanoid_run.npz")
+    motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_run.npz")
 
 
 @configclass
 class HumanoidAmpWalkEnvCfg(HumanoidAmpEnvCfg):
-    motion_file = os.path.join(MOTIONS_DIR, "humanoid_walk.npz")
+    motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_walk.npz")

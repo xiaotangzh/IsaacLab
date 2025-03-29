@@ -60,3 +60,7 @@ _build
 
 # Pre-Trained Checkpoints
 /.pretrained_checkpoints/
+
+# My Dataset
+*.pkl
+*.npy
