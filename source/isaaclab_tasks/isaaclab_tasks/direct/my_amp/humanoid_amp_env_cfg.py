@@ -72,6 +72,8 @@ class HumanoidAmpEnvCfg(DirectRLEnvCfg):
             ),
         },
     )
+    # robot: ArticulationCfg = SMPLX_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+
 
 @configclass
 class HumanoidAmpDanceEnvCfg(HumanoidAmpEnvCfg):

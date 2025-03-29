@@ -88,6 +88,15 @@ class HumanoidAmpEnv(DirectRLEnv):
             self.robot.data.body_ang_vel_w[:, self.ref_body_index],
             self.robot.data.body_pos_w[:, self.key_body_indexes],
         )
+        print(
+            self.robot.data.joint_pos.shape,
+            self.robot.data.joint_vel.shape,
+            self.robot.data.body_pos_w.shape,
+            self.robot.data.body_quat_w.shape,
+            self.robot.data.body_lin_vel_w.shape,
+            self.robot.data.body_ang_vel_w.shape,
+            self.robot.data.body_pos_w.shape,
+        )
 
         # update AMP observation history
         for i in reversed(range(self.cfg.num_amp_observations - 1)):
