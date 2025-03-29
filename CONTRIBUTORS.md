@@ -63,9 +63,11 @@ Guidelines for modifications:
 * Jia Lin Yuan
 * Jinghuan Shang
 * Jingzhou Liu
+* Jinqi Wei
 * Johnson Sun
 * Kaixi Bao
 * Kourosh Darvish
+* Kousheek Chakraborty
 * Lionel Gulich
 * Louis Le Lay
 * Lorenz Wellhausen
