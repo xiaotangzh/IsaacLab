@@ -9,7 +9,7 @@ import os
 from dataclasses import MISSING
 
 from isaaclab_assets import HUMANOID_28_CFG
-from isaaclab_assets.robots.smpl import SMPLX_CFG
+from isaaclab_assets.robots.smpl import SMPL_CFG
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectRLEnvCfg
@@ -29,17 +29,17 @@ class HumanoidAmpEnvCfg(DirectRLEnvCfg):
     decimation = 2
 
     # spaces
-    observation_space = 81
-    action_space = 28
+    observation_space = 166
+    action_space = 69
     state_space = 0
     num_amp_observations = 2
-    amp_observation_space = 81
+    amp_observation_space = 166
 
     early_termination = True
     termination_height = 0.5
 
     motion_file: str = MISSING
-    reference_body = "torso"
+    reference_body = "Pelvis"
     reset_strategy = "random"  # default, random, random-start
     """Strategy to be followed when resetting each environment (humanoid's pose and joint states).
 
@@ -62,18 +62,21 @@ class HumanoidAmpEnvCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=10.0, replicate_physics=True)
 
     # robot
-    robot: ArticulationCfg = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot").replace(
-        actuators={
-            "body": ImplicitActuatorCfg(
-                joint_names_expr=[".*"],
-                velocity_limit=100.0,
-                stiffness=None,
-                damping=None,
-            ),
-        },
-    )
-    # robot: ArticulationCfg = SMPLX_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    # robot: ArticulationCfg = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot").replace(
+    #     actuators={
+    #         "body": ImplicitActuatorCfg(
+    #             joint_names_expr=[".*"],
+    #             velocity_limit=100.0,
+    #             stiffness=None,
+    #             damping=None,
+    #         ),
+    #     },
+    # )
+    robot: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
+@configclass
+class HumanoidAmpInterHumanEnvCfg(HumanoidAmpEnvCfg):
+    motion_file = os.path.join(MOTIONS_DIR, "InterHuman/1.npz")
 
 @configclass
 class HumanoidAmpDanceEnvCfg(HumanoidAmpEnvCfg):

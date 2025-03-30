@@ -16,7 +16,7 @@ from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.math import quat_rotate
 
 from .humanoid_amp_env_cfg import HumanoidAmpEnvCfg
-from .motions import MotionLoader
+from .motions.motion_loader import MotionLoader
 
 
 class HumanoidAmpEnv(DirectRLEnv):
@@ -35,10 +35,11 @@ class HumanoidAmpEnv(DirectRLEnv):
         self._motion_loader = MotionLoader(motion_file=self.cfg.motion_file, device=self.device)
 
         # DOF and key body indexes
-        key_body_names = ["right_hand", "left_hand", "right_foot", "left_foot"]
+        key_body_names = ["Pelvis", "L_Hand", "R_Hand", "L_Toe", "R_Toe"]
         self.ref_body_index = self.robot.data.body_names.index(self.cfg.reference_body)
         self.key_body_indexes = [self.robot.data.body_names.index(name) for name in key_body_names]
-        self.motion_dof_indexes = self._motion_loader.get_dof_index(self.robot.data.joint_names)
+        self.motion_dof_indexes = self._motion_loader.get_dof_index(self.robot.data.joint_names) 
+        # self.robot.data.joint_names: 'L_Hip_x', 'L_Hip_y' ...
         self.motion_ref_body_index = self._motion_loader.get_body_index([self.cfg.reference_body])[0]
         self.motion_key_body_indexes = self._motion_loader.get_body_index(key_body_names)
 
@@ -87,15 +88,6 @@ class HumanoidAmpEnv(DirectRLEnv):
             self.robot.data.body_lin_vel_w[:, self.ref_body_index],
             self.robot.data.body_ang_vel_w[:, self.ref_body_index],
             self.robot.data.body_pos_w[:, self.key_body_indexes],
-        )
-        print(
-            self.robot.data.joint_pos.shape,
-            self.robot.data.joint_vel.shape,
-            self.robot.data.body_pos_w.shape,
-            self.robot.data.body_quat_w.shape,
-            self.robot.data.body_lin_vel_w.shape,
-            self.robot.data.body_ang_vel_w.shape,
-            self.robot.data.body_pos_w.shape,
         )
 
         # update AMP observation history
@@ -157,18 +149,22 @@ class HumanoidAmpEnv(DirectRLEnv):
             dof_velocities,
             body_positions,
             body_rotations,
-            body_linear_velocities,
-            body_angular_velocities,
+            # body_linear_velocities,
+            # body_angular_velocities,
+            root_linear_velocity,
+            root_angular_velocity,
         ) = self._motion_loader.sample(num_samples=num_samples, times=times)
 
         # get root transforms (the humanoid torso)
-        motion_torso_index = self._motion_loader.get_body_index(["torso"])[0]
+        motion_root_index = self._motion_loader.get_body_index([self.cfg.reference_body])[0]
         root_state = self.robot.data.default_root_state[env_ids].clone()
-        root_state[:, 0:3] = body_positions[:, motion_torso_index] + self.scene.env_origins[env_ids]
+        root_state[:, 0:3] = body_positions[:, motion_root_index] + self.scene.env_origins[env_ids]
         root_state[:, 2] += 0.15  # lift the humanoid slightly to avoid collisions with the ground
-        root_state[:, 3:7] = body_rotations[:, motion_torso_index]
-        root_state[:, 7:10] = body_linear_velocities[:, motion_torso_index]
-        root_state[:, 10:13] = body_angular_velocities[:, motion_torso_index]
+        root_state[:, 3:7] = body_rotations[:, motion_root_index]
+        # root_state[:, 7:10] = body_linear_velocities[:, motion_root_index]
+        # root_state[:, 10:13] = body_angular_velocities[:, motion_root_index]
+        root_state[:, 7:10] = root_linear_velocity
+        root_state[:, 10:13] = root_angular_velocity
         # get DOFs state
         dof_pos = dof_positions[:, self.motion_dof_indexes]
         dof_vel = dof_velocities[:, self.motion_dof_indexes]
@@ -180,7 +176,6 @@ class HumanoidAmpEnv(DirectRLEnv):
         return root_state, dof_pos, dof_vel
 
     # env methods
-
     def collect_reference_motions(self, num_samples: int, current_times: np.ndarray | None = None) -> torch.Tensor:
         # sample random motion times (or use the one specified)
         if current_times is None:
@@ -195,8 +190,10 @@ class HumanoidAmpEnv(DirectRLEnv):
             dof_velocities,
             body_positions,
             body_rotations,
-            body_linear_velocities,
-            body_angular_velocities,
+            # body_linear_velocities,
+            # body_angular_velocities,
+            root_linear_velocity,
+            root_angular_velocity,
         ) = self._motion_loader.sample(num_samples=num_samples, times=times)
         # compute AMP observation
         amp_observation = compute_obs(
@@ -204,8 +201,10 @@ class HumanoidAmpEnv(DirectRLEnv):
             dof_velocities[:, self.motion_dof_indexes],
             body_positions[:, self.motion_ref_body_index],
             body_rotations[:, self.motion_ref_body_index],
-            body_linear_velocities[:, self.motion_ref_body_index],
-            body_angular_velocities[:, self.motion_ref_body_index],
+            # body_linear_velocities[:, self.motion_ref_body_index],
+            # body_angular_velocities[:, self.motion_ref_body_index],
+            root_linear_velocity,
+            root_angular_velocity,
             body_positions[:, self.motion_key_body_indexes],
         )
         return amp_observation.view(-1, self.amp_observation_size)
@@ -224,23 +223,23 @@ def quaternion_to_tangent_and_normal(q: torch.Tensor) -> torch.Tensor:
 
 @torch.jit.script
 def compute_obs(
-    dof_positions: torch.Tensor, # 28
-    dof_velocities: torch.Tensor, # 28
-    root_positions: torch.Tensor, # 3
-    root_rotations: torch.Tensor, # 4
-    root_linear_velocities: torch.Tensor, # 3
-    root_angular_velocities: torch.Tensor, # 3
-    key_body_positions: torch.Tensor, # 4, 3
+    dof_positions: torch.Tensor, 
+    dof_velocities: torch.Tensor, 
+    root_positions: torch.Tensor, 
+    root_rotations: torch.Tensor, 
+    root_linear_velocity: torch.Tensor,
+    root_angular_velocity: torch.Tensor, 
+    key_body_positions: torch.Tensor, 
 ) -> torch.Tensor:
     obs = torch.cat(
         (
-            dof_positions, # 28
-            dof_velocities, # 28
-            root_positions[:, 2:3],  # root body height # 1
+            dof_positions,
+            dof_velocities,
+            root_positions[:, 2:3],  # root body height
             quaternion_to_tangent_and_normal(root_rotations), # 6
-            root_linear_velocities, # 3
-            root_angular_velocities, # 3
-            (key_body_positions - root_positions.unsqueeze(-2)).view(key_body_positions.shape[0], -1), # 12
+            root_linear_velocity, 
+            root_angular_velocity, 
+            (key_body_positions - root_positions.unsqueeze(-2)).view(key_body_positions.shape[0], -1), 
         ),
         dim=-1,
     )

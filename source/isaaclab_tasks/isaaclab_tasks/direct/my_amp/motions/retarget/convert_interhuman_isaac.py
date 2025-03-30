@@ -144,6 +144,10 @@ def run(in_file: str, out_file: str, SKMotion_out_file: str):
                 torch.from_numpy(pose_quat),
                 root_trans_offset,
                 is_local=True)
+            
+            # save as SkeletonMotion
+            target_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=int(fps))
+            target_motion.to_file(SKMotion_out_file)
 
             if robot_cfg['upright_start']:
                 pose_quat_global = (sRot.from_quat(new_sk_state.global_rotation.reshape(-1, 4).numpy()) * sRot.from_quat([0.5, 0.5, 0.5, 0.5]).inv()).as_quat().reshape(B, -1, 4)  # should fix pose_quat as well here...
@@ -179,9 +183,7 @@ def run(in_file: str, out_file: str, SKMotion_out_file: str):
     with open(out_file, "wb") as f:
         pickle.dump(amass_full_motion_dict, f)
     
-    # save as SkeletonMotion
-    target_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=int(fps))
-    target_motion.to_file(SKMotion_out_file)
+    
     
     return
 

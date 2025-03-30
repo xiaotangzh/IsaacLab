@@ -75,14 +75,14 @@ class HumanoidAmpEnvCfg(DirectRLEnvCfg):
 
 @configclass
 class HumanoidAmpDanceEnvCfg(HumanoidAmpEnvCfg):
-    motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_dance.npz")
+    motion_file = os.path.join(MOTIONS_DIR, "humanoid_dance.npz")
 
 
 @configclass
 class HumanoidAmpRunEnvCfg(HumanoidAmpEnvCfg):
-    motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_run.npz")
+    motion_file = os.path.join(MOTIONS_DIR, "humanoid_run.npz")
 
 
 @configclass
 class HumanoidAmpWalkEnvCfg(HumanoidAmpEnvCfg):
-    motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_walk.npz")
+    motion_file = os.path.join(MOTIONS_DIR, "humanoid_walk.npz")

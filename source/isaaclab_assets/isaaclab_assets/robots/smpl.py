@@ -8,7 +8,7 @@ from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 SMPLX_CFG = ArticulationCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     spawn=sim_utils.UsdFileCfg(
-        usd_path="D:/IsaacLab/source/isaaclab_assets/isaaclab_assets/usd/smplx_humanoid.usda",
+        usd_path="D:/IsaacLab/source/isaaclab_assets/isaaclab_assets/usd/smpl_humanoid.usda",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -224,7 +224,7 @@ SMPLX_CFG = ArticulationCfg(
 
 SMPL_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        usd_path="source/isaaclab_assets/isaaclab_assets/usd/smpl_humanoid.usda",
+        usd_path="D:/IsaacLab/source/isaaclab_assets/isaaclab_assets/usd/smpl_humanoid.usda",
         activate_contact_sensors=True,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
