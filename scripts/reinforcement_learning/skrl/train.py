@@ -16,7 +16,7 @@ import argparse
 import sys
 
 from isaaclab.app import AppLauncher
-# from skrl.agents.torch.amp
+from skrl.agents.torch.amp.amp import AMP
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with skrl.")

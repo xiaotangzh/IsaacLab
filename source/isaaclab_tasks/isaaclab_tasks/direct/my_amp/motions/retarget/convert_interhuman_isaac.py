@@ -33,7 +33,7 @@ from poselib.skeleton.skeleton3d import SkeletonTree, SkeletonMotion, SkeletonSt
 import argparse
 import pickle
 
-def run(in_file: str, out_file: str, SKMotion_out_file: str):
+def run(in_file: str, out_file: str, SKMotion_out_file = None):
 
     robot_cfg = {
         "mesh": False,
@@ -121,7 +121,7 @@ def run(in_file: str, out_file: str, SKMotion_out_file: str):
 
         smpl_2_mujoco = [joint_names.index(q) for q in mujoco_joint_names if q in joint_names]
         batch_size = pose_aa.shape[0]
-        pose_aa = np.concatenate([pose_aa[:, :66], np.zeros((batch_size, 6))], axis=1) # zero values L/R hands
+        pose_aa = np.concatenate([pose_aa[:, :66], np.zeros((batch_size, 6))], axis=1) # 23*3 joints + zero values L/R hands = 24 joints
         pose_aa_mj = pose_aa.reshape(-1, 24, 3)[..., smpl_2_mujoco, :].copy()
 
         num = 1
@@ -145,9 +145,7 @@ def run(in_file: str, out_file: str, SKMotion_out_file: str):
                 root_trans_offset,
                 is_local=True)
             
-            # save as SkeletonMotion
-            target_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=int(fps))
-            target_motion.to_file(SKMotion_out_file)
+            
 
             if robot_cfg['upright_start']:
                 pose_quat_global = (sRot.from_quat(new_sk_state.global_rotation.reshape(-1, 4).numpy()) * sRot.from_quat([0.5, 0.5, 0.5, 0.5]).inv()).as_quat().reshape(B, -1, 4)  # should fix pose_quat as well here...
@@ -166,6 +164,16 @@ def run(in_file: str, out_file: str, SKMotion_out_file: str):
 
                     root_trans_offset[..., 1] *= -1
                 ############################################################
+            
+            # save as SkeletonMotion
+            if SKMotion_out_file:
+                target_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=int(fps))
+                # target_motion.to_file(SKMotion_out_file)
+                # draw3D(target_motion.global_transformation[100,:,-3:])
+                # animate3D(target_motion.global_transformation[:,:,-3:])
+                # animate3D(target_motion.global_translation)
+                # print(target_motion.global_transformation.shape)
+                return target_motion
 
             new_motion_out = {}
             new_motion_out['pose_quat_global'] = pose_quat_global
@@ -182,14 +190,57 @@ def run(in_file: str, out_file: str, SKMotion_out_file: str):
     # joblib.dump(amass_full_motion_dict, out_file)
     with open(out_file, "wb") as f:
         pickle.dump(amass_full_motion_dict, f)
-    
-    
-    
-    return
 
-# import ipdb
+    return 
 
-# ipdb.set_trace()
+def draw3D(tensor):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+
+    x = tensor[:, 0]
+    y = tensor[:, 1]
+    z = tensor[:, 2]
+
+    ax.scatter(x, y, z, c='r', marker='o', s=50)
+
+    plt.show()
+    
+def animate3D(tensor):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+    from matplotlib.animation import FuncAnimation
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_xlim(-1, 1)
+    ax.set_ylim(0, 1)
+    ax.set_zlim(-1, 1)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    title = ax.set_title('Frame: 0')
+
+    scatter = ax.scatter([], [], [], c='red', s=50)
+
+    def update(frame):
+        x = tensor[frame, :, 0]
+        y = tensor[frame, :, 1]
+        z = tensor[frame, :, 2]
+        scatter._offsets3d = (x, y, z)
+        title.set_text(f'Frame: {frame}/400')
+        return scatter, title
+
+    ani = FuncAnimation(
+        fig, update, frames=tensor.shape[0],
+        interval=50, blit=False
+    )
+
+    plt.show()  
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

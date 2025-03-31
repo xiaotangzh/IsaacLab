@@ -9,7 +9,7 @@ import os
 from dataclasses import MISSING
 
 from isaaclab_assets import HUMANOID_28_CFG
-from isaaclab_assets.robots.smpl import SMPLX_CFG
+
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectRLEnvCfg
@@ -72,6 +72,7 @@ class HumanoidAmpEnvCfg(DirectRLEnvCfg):
             ),
         },
     )
+
 
 @configclass
 class HumanoidAmpDanceEnvCfg(HumanoidAmpEnvCfg):

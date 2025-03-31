@@ -21,7 +21,7 @@ MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions"
 
 
 @configclass
-class HumanoidAmpEnvCfg(DirectRLEnvCfg):
+class MyAmpEnvCfg(DirectRLEnvCfg):
     """Humanoid AMP environment config (base class)."""
 
     # env
@@ -29,24 +29,26 @@ class HumanoidAmpEnvCfg(DirectRLEnvCfg):
     decimation = 2
 
     # spaces
-    observation_space = 166
+    observation_space = 42
     action_space = 69
     state_space = 0
     num_amp_observations = 2
-    amp_observation_space = 166
+    amp_observation_space = observation_space
 
     early_termination = True
     termination_height = 0.5
 
     motion_file: str = MISSING
     reference_body = "Pelvis"
-    reset_strategy = "random"  # default, random, random-start
+    reset_strategy = "random-start"  # default, random, random-start
     """Strategy to be followed when resetting each environment (humanoid's pose and joint states).
 
     * default: pose and joint states are set to the initial state of the asset.
     * random: pose and joint states are set by sampling motions at random, uniform times.
     * random-start: pose and joint states are set by sampling motion at the start (time zero).
     """
+    
+    sync_motion = True # apply reference actions instead of predicted actions to robots
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
@@ -75,19 +77,19 @@ class HumanoidAmpEnvCfg(DirectRLEnvCfg):
     robot: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
 @configclass
-class HumanoidAmpInterHumanEnvCfg(HumanoidAmpEnvCfg):
+class MyAmpInterHumanEnvCfg(MyAmpEnvCfg):
     motion_file = os.path.join(MOTIONS_DIR, "InterHuman/1.npz")
 
-@configclass
-class HumanoidAmpDanceEnvCfg(HumanoidAmpEnvCfg):
-    motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_dance.npz")
+# @configclass
+# class HumanoidAmpDanceEnvCfg(MyAmpEnvCfg):
+#     motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_dance.npz")
 
 
-@configclass
-class HumanoidAmpRunEnvCfg(HumanoidAmpEnvCfg):
-    motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_run.npz")
+# @configclass
+# class HumanoidAmpRunEnvCfg(MyAmpEnvCfg):
+#     motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_run.npz")
 
 
-@configclass
-class HumanoidAmpWalkEnvCfg(HumanoidAmpEnvCfg):
-    motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_walk.npz")
+# @configclass
+# class HumanoidAmpWalkEnvCfg(MyAmpEnvCfg):
+#     motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_walk.npz")

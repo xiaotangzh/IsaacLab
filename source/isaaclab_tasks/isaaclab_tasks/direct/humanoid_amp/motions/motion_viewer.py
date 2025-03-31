@@ -111,7 +111,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--render-scene",
         action="store_true",
-        default=True,
+        default=False,
         help=(
             "Whether the scene (space occupied by the skeleton during movement) is rendered instead of a reduced view"
             " of the skeleton."

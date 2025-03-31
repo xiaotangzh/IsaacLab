@@ -73,67 +73,21 @@ class MotionLib():
     def get_motion_length(self, motion_ids):
         return self._motion_lengths[motion_ids]
 
-    def get_motion_state(self, motion_ids, motion_times):
-        # n = len(motion_ids)
-        # num_bodies = self._get_num_bodies()
-        # num_key_bodies = self._key_body_ids.shape[0]
-
-        # motion_len = self._motion_lengths[motion_ids]
-        # num_frames = self._motion_num_frames[motion_ids]
-        # dt = self._motion_dt[motion_ids]
-
-        # frame_idx0, frame_idx1, blend = self._calc_frame_blend(motion_times, motion_len, num_frames, dt)
-
-        # f0l = frame_idx0 + self.length_starts[motion_ids]
-        # f1l = frame_idx1 + self.length_starts[motion_ids]
-
-        # root_pos0 = self.gts[f0l, 0]
-        # root_pos1 = self.gts[f1l, 0]
-
-        # root_rot0 = self.grs[f0l, 0]
-        # root_rot1 = self.grs[f1l, 0]
-
-        # local_rot0 = self.lrs[f0l]
-        # local_rot1 = self.lrs[f1l]
-
-        # root_vel = self.grvs[f0l]
-
-        # root_ang_vel = self.gravs[f0l]
+    def get_motion_state(self, start: int=0, end: int | None=None):
+        if end is None: end = self.gts.shape[0]
         
-        # key_pos0 = self.gts[f0l.unsqueeze(-1), self._key_body_ids.unsqueeze(0)]
-        # key_pos1 = self.gts[f1l.unsqueeze(-1), self._key_body_ids.unsqueeze(0)]
-
-        # dof_vel = self.dvs[f0l]
-
-        # vals = [root_pos0, root_pos1, local_rot0, local_rot1, root_vel, root_ang_vel, key_pos0, key_pos1]
-        # for v in vals:
-        #     assert v.dtype != torch.float64
-
-
-        # blend = blend.unsqueeze(-1)
-
-        # root_pos = (1.0 - blend) * root_pos0 + blend * root_pos1
-
-        # root_rot = torch_utils.slerp(root_rot0, root_rot1, blend)
-
-        # blend_exp = blend.unsqueeze(-1)
-        # key_pos = (1.0 - blend_exp) * key_pos0 + blend_exp * key_pos1
+        root_pos = self.gts[start:end, 0]
+        root_rot = self.grs[start:end, 0]
+        root_vel = self.grvs[start:end]
+        root_ang_vel = self.gravs[start:end]
         
-        # local_rot = torch_utils.slerp(local_rot0, local_rot1, torch.unsqueeze(blend, axis=-1))
-        # dof_pos = self._local_rotation_to_dof(local_rot, 'xyz')
+        dof_pos = self._local_rotation_to_dof(self.lrs[start:end], 'xyz')
+        dof_vel = self.dvs[start:end]
         
-        root_pos = self.gts[:, 0]
-        root_rot = self.grs[:, 0]
-        root_vel = self.grvs
-        root_ang_vel = self.gravs
+        local_rot = self.lrs[start:end]
         
-        dof_pos = self._local_rotation_to_dof(self.lrs, 'xyz')
-        dof_vel = self.dvs
-        
-        local_rot = self.lrs
-        
-        rigid_body_pos = self.gts
-        rigid_body_rot = self.grs
+        rigid_body_pos = self.gts[start:end]
+        rigid_body_rot = self.grs[start:end]
         
         data = {
             'fps': self._motion_fps[0],
@@ -162,12 +116,19 @@ class MotionLib():
 
         total_len = 0.0
 
-        motion_files, motion_weights = self._fetch_motion_files(motion_file)
+        if type(motion_file) is not SkeletonMotion:
+            motion_files, motion_weights = self._fetch_motion_files(motion_file)
+        else:
+            motion_files = [motion_file]
+            motion_weights = [1.0]
         num_motion_files = len(motion_files)
         for f in range(num_motion_files):
             curr_file = motion_files[f]
-            print("Loading {:d}/{:d} motion files: {:s}".format(f + 1, num_motion_files, curr_file))
-            curr_motion = SkeletonMotion.from_file(curr_file)
+            if type(motion_file) is not SkeletonMotion:
+                print("Loading {:d}/{:d} motion files: {:s}".format(f + 1, num_motion_files, curr_file))
+                curr_motion = SkeletonMotion.from_file(curr_file)
+            else:
+                curr_motion = motion_file
 
             motion_fps = curr_motion.fps
             curr_dt = 1.0 / motion_fps
@@ -322,7 +283,39 @@ class MotionLib():
                 assert False
 
         return dof_vel
-    
+
+def animate3D(tensor):
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d import Axes3D
+    from matplotlib.animation import FuncAnimation
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.set_xlim(-1, 1)
+    ax.set_ylim(0, 1)
+    ax.set_zlim(-1, 1)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    title = ax.set_title('Frame: 0')
+
+    scatter = ax.scatter([], [], [], c='red', s=50)
+
+    def update(frame):
+        x = tensor[frame, :, 0]
+        y = tensor[frame, :, 1]
+        z = tensor[frame, :, 2]
+        scatter._offsets3d = (x, y, z)
+        title.set_text(f'Frame: {frame}/{tensor.shape[0]}')
+        return scatter, title
+
+    ani = FuncAnimation(
+        fig, update, frames=tensor.shape[0],
+        interval=50, blit=False
+    )
+
+    plt.show()  
 
 if __name__ == "__main__":
     dof_body_ids = [ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23 ]
