@@ -234,7 +234,7 @@ class MotionLoader:
             self._interpolate(self.root_angular_velocity, blend=blend, start=index_0, end=index_1),
         )
         
-    def sample_reference(self, num_samples: int):
+    def sample_reference_state(self, num_samples: int):
         return (self.dof_positions.clone().unsqueeze(0).expand(num_samples, -1, -1), 
                 self.dof_velocities.clone().unsqueeze(0).expand(num_samples, -1, -1),
                 self.body_positions.clone().unsqueeze(0).expand(num_samples, -1, -1, -1),

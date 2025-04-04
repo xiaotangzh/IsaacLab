@@ -33,7 +33,7 @@ from poselib.skeleton.skeleton3d import SkeletonTree, SkeletonMotion, SkeletonSt
 import argparse
 import pickle
 
-def run(in_file: str, out_file: str, SKMotion_out_file = None):
+def run(in_file: str, SKMotion_out_file = None):
 
     robot_cfg = {
         "mesh": False,
@@ -65,7 +65,6 @@ def run(in_file: str, out_file: str, SKMotion_out_file = None):
     #     "model": "smpl",
     #     "sim": "isaacgym",
     # }
-    print(robot_cfg)
 
     smpl_local_robot = LocalRobot(
         robot_cfg,
@@ -81,11 +80,10 @@ def run(in_file: str, out_file: str, SKMotion_out_file = None):
     # mujoco_joint_names = ['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
     mujoco_joint_names = SMPL_MUJOCO_NAMES
     joint_names = SMPL_BONE_ORDER_NAMES
-    
 
     amass_full_motion_dict = {}
     interhuman_keys = ["person1", "person2"]
-    for key_name in tqdm(interhuman_keys):
+    for key_name in interhuman_keys:
         smpl_data_entry = amass_data[key_name]
         B = smpl_data_entry['pose_body'].shape[0]
 
@@ -145,8 +143,6 @@ def run(in_file: str, out_file: str, SKMotion_out_file = None):
                 root_trans_offset,
                 is_local=True)
             
-            
-
             if robot_cfg['upright_start']:
                 pose_quat_global = (sRot.from_quat(new_sk_state.global_rotation.reshape(-1, 4).numpy()) * sRot.from_quat([0.5, 0.5, 0.5, 0.5]).inv()).as_quat().reshape(B, -1, 4)  # should fix pose_quat as well here...
 
@@ -161,7 +157,6 @@ def run(in_file: str, out_file: str, SKMotion_out_file = None):
                     pose_quat_global = pose_quat_global[:, left_to_right_index]
                     pose_quat_global[..., 0] *= -1
                     pose_quat_global[..., 2] *= -1
-
                     root_trans_offset[..., 1] *= -1
                 ############################################################
             
@@ -185,11 +180,6 @@ def run(in_file: str, out_file: str, SKMotion_out_file = None):
             new_motion_out['pose_aa'] = pose_aa
             new_motion_out['fps'] = fps
             amass_full_motion_dict[key_name_dump] = new_motion_out
-
-    Path(out_file).parents[0].mkdir(parents=True, exist_ok=True)
-    # joblib.dump(amass_full_motion_dict, out_file)
-    with open(out_file, "wb") as f:
-        pickle.dump(amass_full_motion_dict, f)
 
     return 
 

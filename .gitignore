@@ -64,3 +64,4 @@ _build
 # My Dataset
 *.pkl
 *.npy
+*.npz

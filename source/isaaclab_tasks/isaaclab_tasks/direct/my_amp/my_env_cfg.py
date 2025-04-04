@@ -21,7 +21,7 @@ MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions"
 
 
 @configclass
-class MyAmpEnvCfg(DirectRLEnvCfg):
+class MyEnvCfg(DirectRLEnvCfg):
     """Humanoid AMP environment config (base class)."""
 
     # env
@@ -29,7 +29,7 @@ class MyAmpEnvCfg(DirectRLEnvCfg):
     decimation = 2
 
     # spaces
-    observation_space = 42
+    observation_space = 151
     action_space = 69
     state_space = 0
     num_amp_observations = 2
@@ -40,7 +40,7 @@ class MyAmpEnvCfg(DirectRLEnvCfg):
 
     motion_file: str = MISSING
     reference_body = "Pelvis"
-    reset_strategy = "random-start"  # default, random, random-start
+    reset_strategy = "random"  # default, random, random-start
     """Strategy to be followed when resetting each environment (humanoid's pose and joint states).
 
     * default: pose and joint states are set to the initial state of the asset.
@@ -48,7 +48,7 @@ class MyAmpEnvCfg(DirectRLEnvCfg):
     * random-start: pose and joint states are set by sampling motion at the start (time zero).
     """
     
-    sync_motion = True # apply reference actions instead of predicted actions to robots
+    sync_motion = False # apply reference actions instead of predicted actions to robots
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
@@ -77,19 +77,9 @@ class MyAmpEnvCfg(DirectRLEnvCfg):
     robot: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
 @configclass
-class MyAmpInterHumanEnvCfg(MyAmpEnvCfg):
+class MyAmpInterHumanEnvCfg(MyEnvCfg):
     motion_file = os.path.join(MOTIONS_DIR, "InterHuman/1.npz")
-
-# @configclass
-# class HumanoidAmpDanceEnvCfg(MyAmpEnvCfg):
-#     motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_dance.npz")
-
-
-# @configclass
-# class HumanoidAmpRunEnvCfg(MyAmpEnvCfg):
-#     motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_run.npz")
-
-
-# @configclass
-# class HumanoidAmpWalkEnvCfg(MyAmpEnvCfg):
-#     motion_file = os.path.join(MOTIONS_DIR, "humanoid/humanoid_walk.npz")
+    
+@configclass
+class MyPPOEnvCfg(MyEnvCfg):
+    motion_file = os.path.join(MOTIONS_DIR, "InterHuman/1.npz")
