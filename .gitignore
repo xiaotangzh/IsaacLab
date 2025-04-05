@@ -61,7 +61,8 @@ _build
 # Pre-Trained Checkpoints
 /.pretrained_checkpoints/
 
-# My Dataset
+# My ignores
 *.pkl
 *.npy
 *.npz
+*.txt

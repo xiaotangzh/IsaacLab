@@ -30,6 +30,8 @@ class MyEnv(DirectRLEnv):
         dof_upper_limits = self.robot.data.soft_joint_pos_limits[0, :, 1]
         self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
         self.action_scale = dof_upper_limits - dof_lower_limits
+        self.init_root_height = 0.07 # lift the humanoid slightly to avoid collisions with the ground
+        self.termination_heights = torch.tensor(self.cfg.termination_heights, device=self.device)
 
         # load motion
         self._motion_loader = MotionLoader(motion_file=self.cfg.motion_file, device=self.device)
@@ -37,6 +39,7 @@ class MyEnv(DirectRLEnv):
         # DOF and key body indexes
         key_body_names = ["L_Hand", "R_Hand", "L_Toe", "R_Toe", "Head"]
         self.ref_body_index = self.robot.data.body_names.index(self.cfg.reference_body)
+        self.early_termination_body_indexes = [self.robot.data.body_names.index(name) for name in self.cfg.termination_bodies]
         self.key_body_indexes = [self.robot.data.body_names.index(name) for name in key_body_names]
         self.motion_dof_indexes = self._motion_loader.get_dof_index(self.robot.data.joint_names) # self.robot.data.joint_names: 'L_Hip_x', 'L_Hip_y' ...
         self.motion_ref_body_index = self._motion_loader.get_body_index([self.cfg.reference_body])[0]
@@ -78,7 +81,7 @@ class MyEnv(DirectRLEnv):
         
     #! Pre-physics step
     def _pre_physics_step(self, actions: torch.Tensor):
-        actions = torch.clip(actions, min=-0.07, max=0.07) #todo clip the actions
+        actions = torch.clip(actions, min=-0.07, max=0.07) # clip the actions
         if torch.isnan(actions).any():
             print("nan in actions")
             sys.exit(0)
@@ -96,7 +99,8 @@ class MyEnv(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]: # should return resets and time_out
         time_out = self.episode_length_buf >= self.max_episode_length - 1 # bools of envs that are time out
         if self.cfg.early_termination:
-            died = self.robot.data.body_pos_w[:, self.ref_body_index, 2] < self.cfg.termination_height
+            died = self.robot.data.body_pos_w[:, self.early_termination_body_indexes, 2] < self.termination_heights
+            died = torch.max(died, dim=1).values
         else:
             died = torch.zeros_like(time_out) # no early termination until time out
         
@@ -107,14 +111,14 @@ class MyEnv(DirectRLEnv):
         return died, time_out
     
     def _get_rewards(self) -> torch.Tensor:
-        target_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device)
-        current_quat = self.robot.data.body_quat_w[:, self.ref_body_index]
-        # 确保四元数归一化（如果数据可能未归一化）
-        current_quat = current_quat / torch.norm(current_quat, dim=-1, keepdim=True)
-        # 计算点积（绝对值处理 q 和 -q 的对称性）
-        reward = torch.abs(torch.sum(target_quat * current_quat, dim=-1)) - 0.5
-        print(f'reward: {torch.mean(reward).item()}')
-        return reward
+        # target_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device)
+        # current_quat = self.robot.data.body_quat_w[:, self.ref_body_index]
+        # # 确保四元数归一化（如果数据可能未归一化）
+        # current_quat = current_quat / torch.norm(current_quat, dim=-1, keepdim=True)
+        # # 计算点积（绝对值处理 q 和 -q 的对称性）
+        # reward = torch.abs(torch.sum(target_quat * current_quat, dim=-1)) - 0.5
+        # print(f'reward: {torch.mean(reward).item()}')
+        # return reward
         return torch.ones((self.num_envs,), dtype=torch.float32, device=self.sim.device)
 
     def _reset_idx(self, env_ids: torch.Tensor | None): # env_ids: the ids of envs to be reset
@@ -145,22 +149,16 @@ class MyEnv(DirectRLEnv):
             self.robot.data.body_lin_vel_w[:, self.ref_body_index],
             self.robot.data.body_ang_vel_w[:, self.ref_body_index],
         )
-        
-        if torch.isnan(self.robot.data.body_pos_w[:, self.key_body_indexes]).any():
-            print("nan in robot body pos")
-            sys.exit(0)
-        if torch.isnan(self.robot.data.body_quat_w[:, self.key_body_indexes]).any():
-            print("nan in robot body quat")
-            sys.exit(0)
+
         if torch.isnan(obs).any():
-            print("nan in observation")
+            print("NaN in observation, stop training.")
             sys.exit(0)
 
-        # update AMP observation history
+        # update AMP observation history (pop)
         for i in reversed(range(self.cfg.num_amp_observations - 1)):
             self.amp_observation_buffer[:, i + 1] = self.amp_observation_buffer[:, i]
-        # build AMP observation
-        self.amp_observation_buffer[:, 0] = obs.clone().view(-1, self.cfg.amp_observation_space)
+        # build AMP observation (push)
+        self.amp_observation_buffer[:, 0] = obs.clone()
         self.extras = {"amp_obs": self.amp_observation_buffer.view(-1, self.amp_observation_size)}
 
         return {"policy": obs}
@@ -169,14 +167,8 @@ class MyEnv(DirectRLEnv):
     def write_ref_state(self):
         self.robot.write_root_link_pose_to_sim(self.ref_state_buffer['root_state'][:, self.ref_state_buffer_index, :7], 
                                                self.robot._ALL_INDICES)
-        # if torch.isnan(self.ref_state_buffer['root_state'][:, self.ref_state_buffer_index, :7]).any():
-        #     print("nan in root state :7")
-        #     sys.exit(0)
         self.robot.write_root_com_velocity_to_sim(self.ref_state_buffer['root_state'][:, self.ref_state_buffer_index, 7:], 
                                                   self.robot._ALL_INDICES)
-        # if torch.isnan(self.ref_state_buffer['root_state'][:, self.ref_state_buffer_index, 7:]).any():
-        #     print("nan in root state 7:")
-        #     sys.exit(0)
         
         #todo what is the difference between the two lines below?
         # self.robot.write_root_pose_to_sim(self.ref_state_buffer['root_state'][:, self.ref_state_buffer_index, :7], 
@@ -187,12 +179,6 @@ class MyEnv(DirectRLEnv):
         self.robot.write_joint_state_to_sim(self.ref_state_buffer['joint_pos'][:, self.ref_state_buffer_index], 
                                             self.ref_state_buffer['joint_vel'][:, self.ref_state_buffer_index], 
                                             None, self.robot._ALL_INDICES)
-        # if torch.isnan(self.ref_state_buffer['joint_pos'][:, self.ref_state_buffer_index]).any():
-        #     print("nan in joint pos")
-        #     sys.exit(0)
-        # if torch.isnan(self.ref_state_buffer['joint_vel'][:, self.ref_state_buffer_index]).any():
-        #     print("nan in joint pos")
-        #     sys.exit(0)
         
         self.ref_state_buffer_index = (self.ref_state_buffer_index + 1) % self.ref_state_buffer_length
 
@@ -228,8 +214,7 @@ class MyEnv(DirectRLEnv):
         root_state[:, 3:7] = body_rotations[:, motion_root_index]
         root_state[:, 7:10] = root_linear_velocity
         root_state[:, 10:13] = root_angular_velocity
-        # root_state[:, 2] += 0.15  # lift the humanoid slightly to avoid collisions with the ground
-        # root_state[:, 3:7] = torch.tensor([0.707, 0.0, 0.707, 0.0], device=self.device) #todo
+        root_state[:, 2] += self.init_root_height  # lift the humanoid slightly to avoid collisions with the ground
         # get DOFs state
         dof_pos = dof_positions[:, self.motion_dof_indexes]
         dof_vel = dof_velocities[:, self.motion_dof_indexes]
@@ -256,7 +241,7 @@ class MyEnv(DirectRLEnv):
         ) = self._motion_loader.sample_reference_state(num_samples)
         ref_root_state = self.robot.data.default_root_state[env_ids].unsqueeze(1).expand(-1, ref_dof_positions.shape[1], -1).clone()
         ref_root_state[:, :, 0:3] = ref_body_positions[:, :, motion_root_index] + self.scene.env_origins[env_ids].unsqueeze(1)
-        # ref_root_state[:, :, 2] += 0.15  # lift the humanoid slightly to avoid collisions with the ground
+        ref_root_state[:, :, 2] += self.init_root_height  # lift the humanoid slightly to avoid collisions with the ground
         ref_root_state[:, :, 3:7] = ref_body_rotations[:, :, motion_root_index]
         ref_root_state[:, :, 7:10] = ref_root_linear_velocity
         ref_root_state[:, :, 10:13] = ref_root_angular_velocity
@@ -266,7 +251,7 @@ class MyEnv(DirectRLEnv):
             "joint_vel": ref_dof_velocities[:, :, self.motion_dof_indexes],
         }
 
-    # env methods, called by the env, do not change
+    # env.wrapper -> (skrl Runner) -> skrl AMP agent
     def collect_reference_motions(self, num_samples: int, current_times: np.ndarray | None = None) -> torch.Tensor:
         # sample random motion times (or use the one specified)
         if current_times is None:
@@ -284,6 +269,7 @@ class MyEnv(DirectRLEnv):
             root_linear_velocity,
             root_angular_velocity,
         ) = self._motion_loader.sample(num_samples=num_samples, times=times)
+        # self.extras["text"] = #todo pass sampled motion text description to env.infos
         # compute AMP observation
         amp_observation = compute_obs(
             dof_positions[:, self.motion_dof_indexes],
@@ -293,10 +279,7 @@ class MyEnv(DirectRLEnv):
             root_linear_velocity,
             root_angular_velocity,
         )
-        if torch.isnan(amp_observation).any():
-            print("nan in ref observation")
-            sys.exit(0)
-        return amp_observation.view(-1, self.amp_observation_size)
+        return amp_observation.view(-1, self.amp_observation_size) # (num_envs, state transitions)
 
 
 @torch.jit.script

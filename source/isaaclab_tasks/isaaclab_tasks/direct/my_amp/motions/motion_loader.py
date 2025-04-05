@@ -35,12 +35,6 @@ class MotionLoader:
         self.dof_velocities = torch.tensor(data["dof_velocities"], dtype=torch.float32, device=self.device)
         self.body_positions = torch.tensor(data["body_positions"], dtype=torch.float32, device=self.device)
         self.body_rotations = torch.tensor(data["body_rotations"], dtype=torch.float32, device=self.device)
-        # self.body_linear_velocities = torch.tensor(
-        #     data["body_linear_velocities"], dtype=torch.float32, device=self.device
-        # )
-        # self.body_angular_velocities = torch.tensor(
-        #     data["body_angular_velocities"], dtype=torch.float32, device=self.device
-        # )
         self.root_linear_velocity = torch.tensor(
             data["root_linear_velocity"], dtype=torch.float32, device=self.device
         )
@@ -228,8 +222,6 @@ class MotionLoader:
             self._interpolate(self.dof_velocities, blend=blend, start=index_0, end=index_1),
             self._interpolate(self.body_positions, blend=blend, start=index_0, end=index_1),
             self._slerp(self.body_rotations, blend=blend, start=index_0, end=index_1),
-            # self._interpolate(self.body_linear_velocities, blend=blend, start=index_0, end=index_1),
-            # self._interpolate(self.body_angular_velocities, blend=blend, start=index_0, end=index_1),
             self._interpolate(self.root_linear_velocity, blend=blend, start=index_0, end=index_1),
             self._interpolate(self.root_angular_velocity, blend=blend, start=index_0, end=index_1),
         )

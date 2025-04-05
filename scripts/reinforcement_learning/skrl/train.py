@@ -16,7 +16,6 @@ import argparse
 import sys
 
 from isaaclab.app import AppLauncher
-from skrl.agents.torch.amp.amp import AMP
 
 # add argparse arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with skrl.")
@@ -189,7 +188,6 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     if resume_path:
         print(f"[INFO] Loading model checkpoint from: {resume_path}")
         runner.agent.load(resume_path)
-
     # run training
     runner.run()
 

@@ -25,7 +25,7 @@ class MyEnvCfg(DirectRLEnvCfg):
     """Humanoid AMP environment config (base class)."""
 
     # env
-    episode_length_s = 10.0
+    episode_length_s = 10.0 # 10s * 30fps = 300 frames
     decimation = 2
 
     # spaces
@@ -36,7 +36,8 @@ class MyEnvCfg(DirectRLEnvCfg):
     amp_observation_space = observation_space
 
     early_termination = True
-    termination_height = 0.5
+    termination_bodies = ["Pelvis", "Head"]
+    termination_heights = [0.5, 0.8]
 
     motion_file: str = MISSING
     reference_body = "Pelvis"
@@ -61,7 +62,7 @@ class MyEnvCfg(DirectRLEnvCfg):
     )
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=4096, env_spacing=10.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=16, env_spacing=5.0, replicate_physics=True)
 
     # robot
     # robot: ArticulationCfg = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot").replace(
@@ -78,8 +79,8 @@ class MyEnvCfg(DirectRLEnvCfg):
 
 @configclass
 class MyAmpInterHumanEnvCfg(MyEnvCfg):
-    motion_file = os.path.join(MOTIONS_DIR, "InterHuman/1.npz")
+    motion_file = os.path.join(MOTIONS_DIR, "InterHuman/2069.npz")
     
 @configclass
 class MyPPOEnvCfg(MyEnvCfg):
-    motion_file = os.path.join(MOTIONS_DIR, "InterHuman/1.npz")
+    motion_file = os.path.join(MOTIONS_DIR, "InterHuman/2069.npz")
