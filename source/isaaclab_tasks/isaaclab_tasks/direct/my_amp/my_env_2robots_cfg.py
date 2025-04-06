@@ -21,7 +21,7 @@ MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions"
 
 
 @configclass
-class MyEnvCfg(DirectRLEnvCfg):
+class MyEnv2RobotsCfg(DirectRLEnvCfg):
     """Humanoid AMP environment config (base class)."""
 
     # env
@@ -29,8 +29,8 @@ class MyEnvCfg(DirectRLEnvCfg):
     decimation = 2
 
     # spaces
-    observation_space = 151
-    action_space = 69
+    observation_space = 151 * 2
+    action_space = 69 * 2
     state_space = 0
     num_amp_observations = 2
     amp_observation_space = observation_space
@@ -38,9 +38,15 @@ class MyEnvCfg(DirectRLEnvCfg):
     early_termination = True
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
-
-    motion_file: str = MISSING
+    
+    # reward
+    reward = "ones"
+    
+    # motions
+    motion_file_1: str = MISSING
+    motion_file_2: str = MISSING
     reference_body = "Pelvis"
+    sync_motion = False # apply reference actions instead of predicted actions to robots
     reset_strategy = "random"  # default, random, random-start
     """Strategy to be followed when resetting each environment (humanoid's pose and joint states).
 
@@ -48,8 +54,6 @@ class MyEnvCfg(DirectRLEnvCfg):
     * random: pose and joint states are set by sampling motions at random, uniform times.
     * random-start: pose and joint states are set by sampling motion at the start (time zero).
     """
-    
-    sync_motion = False # apply reference actions instead of predicted actions to robots
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
@@ -75,12 +79,14 @@ class MyEnvCfg(DirectRLEnvCfg):
     #         ),
     #     },
     # )
-    robot: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot")
+    robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
+    robot2: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot2")
 
 @configclass
-class MyAmpInterHumanEnvCfg(MyEnvCfg):
-    motion_file = os.path.join(MOTIONS_DIR, "InterHuman/2069.npz")
+class MyAmpInterHumanEnvCfg(MyEnv2RobotsCfg):
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/2069_1.npz")
+    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/2069_2.npz")
     
-@configclass
-class MyPPOEnvCfg(MyEnvCfg):
-    motion_file = os.path.join(MOTIONS_DIR, "InterHuman/2069.npz")
+# @configclass
+# class MyPPOEnvCfg(MyEnv2RobotsCfg):
+#     motion_file = os.path.join(MOTIONS_DIR, "InterHuman/2069.npz")

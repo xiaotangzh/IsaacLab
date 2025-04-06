@@ -7,10 +7,11 @@ import numpy as np
 import os
 from tqdm import tqdm
 
-def convert(path, file_name, min_frames: int | None=None):
+def convert(path, file_name, person: str = "person1"):
     SKMotion = run(
         in_file=f"in_files/{file_name}.pkl",
-        SKMotion_out_file=f"{path}/{file_name}.npy"
+        SKMotion_out_file=f"{path}/{file_name}.npy",
+        person=person
     )
     
     with open(f"in_files/{file_name}.txt", 'r', encoding='utf-8') as text_file:
@@ -49,12 +50,28 @@ def convert(path, file_name, min_frames: int | None=None):
         data['root_rotation'] = fromXYZWtoWXYZ(data['root_rotation'])
         data['local_rotations'] = fromXYZWtoWXYZ(data['local_rotations'])
         data['body_rotations'] = fromXYZWtoWXYZ(data['body_rotations'])
-    # print(data.keys())
+    print_dict(data)
     # print(data['dof_positions'].shape)
-    animate3D(data['body_positions'], highlight_joint=0, q=data['body_rotations'][:,0], w_last=w_last)
+    # animate3D(data['body_positions'], highlight_joint=0, q=data['body_rotations'][:,0], w_last=w_last)
     # animate3D(data['dof_positions'].reshape(-1, 24, 3))
-    
-    if min_frames is None or (min_frames is not None and data['dof_positions'].shape[0] > min_frames):
+    return data
+
+def print_dict(data):
+    for key, value in data.items():
+        if isinstance(value, torch.Tensor):
+            print(f"{key}: {value.shape}")
+        else:
+            print(f"{key}: {value}")
+
+def combine_2persons(data1, data2):
+    return {"person1": data1, "person2": data2}
+
+def check_frames_length(data1, data2):
+    return data1['dof_positions'].shape[0] == data2['dof_positions'].shape[0]
+
+def save_npz(path, file_name, data, two_persons, min_frames: int | None = None):
+    enough_frames = (min_frames is None) or (min_frames is not None and not two_persons and data['dof_positions'].shape[0] > min_frames) or (min_frames is not None and two_persons and data['person1']['dof_positions'].shape[0] > min_frames)
+    if enough_frames:
         np.savez(f"{path}/{file_name}.npz", **data)
         
 def fromXYZWtoWXYZ(quats: torch.Tensor):
@@ -68,12 +85,35 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     min_frames = 300
+    two_persons = True
     
+    # if multiple files
     if 'pkl' not in args.in_file:
         file_names = [f for f in os.listdir(args.in_file) if os.path.isfile(os.path.join(args.in_file, f))]
         for file_name in tqdm(file_names):
-            convert(path="../InterHuman", file_name=file_name.replace('.pkl',''), min_frames=min_frames)
+            path, name = "../InterHuman", file_name.replace('.pkl','')
+            if not two_persons:
+                data = convert(path=path, file_name=name)
+                save_npz(path, name, data, min_frames)
+            else:
+                data1 = convert(path=path, file_name=name, person="person1")
+                data2 = convert(path=path, file_name=name, person="person2")
+                if check_frames_length(data1, data2):
+                    save_npz(path, name+"_1", data1, min_frames)
+                    save_npz(path, name+"_2", data2, min_frames)
+                    
+    # if single file
     elif 'pkl' in args.in_file:
-        convert(path="../InterHuman", file_name=args.in_file.replace('.pkl','').replace('in_files/',''), min_frames=min_frames)
+        path, name = "../InterHuman", args.in_file.replace('.pkl','').replace('in_files/','')
+        if not two_persons:
+            data = convert(path=path, file_name=name)
+            save_npz(path, name, data, min_frames)
+        else:
+            data1 = convert(path=path, file_name=name, person="person1")
+            data2 = convert(path=path, file_name=name, person="person2")
+            if check_frames_length(data1, data2):
+                save_npz(path, name+"_1", data1, min_frames)
+                save_npz(path, name+"_2", data2, min_frames)
+                    
     else:
         raise ValueError("Invalid input file format. Please provide a .pkl file.")

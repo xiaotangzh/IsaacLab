@@ -1,5 +1,5 @@
 # import the agent and its default configuration
-from skrl.agents.torch.amp import AMP, AMP_DEFAULT_CONFIG
+from agents.my_amp import AMP, AMP_DEFAULT_CONFIG
 from skrl.trainers.torch import SequentialTrainer
 
 from skrl.agents.torch.ppo import PPO, PPO_DEFAULT_CONFIG
@@ -18,13 +18,16 @@ import argparse
 import os
 from isaaclab.app import AppLauncher
 import gymnasium
+import datetime
 
 # parse the arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with skrl.")
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
+parser.add_argument("--steps", type=int, default=80000, help="Number of training steps.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint to resume training.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
+parser.add_argument("--wandb", action="store_true", default=False, help="Log training results to Weight and Bias.")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # load and wrap the Isaac Lab environment
@@ -158,10 +161,16 @@ amp_cfg["time_limit_bootstrap"] = False      # 是否对超时终止做 bootstra
 
 # =============== 日志与检查点 ===============
 amp_cfg["experiment"] = {
-    "directory": os.path.join("logs", "skrl", "humanoid_amp_interhuman"),  # 实验目录
+    "directory": os.path.join("logs", "skrl", "humanoid_amp_interhuman_2robots"),  # 实验目录
     "experiment_name": "",                   # 实验名称 (可选)
-    "write_interval": "auto",                # 日志写入间隔
-    "checkpoint_interval": "auto"            # 模型保存间隔
+    "write_interval": 100,                   # 日志写入间隔
+    "checkpoint_interval": "auto",           # 模型保存间隔
+    "wandb": args_cli.wandb,                 # 是否使用 wandb 记录实验
+    "wandb_kwargs": {
+        "entity": "xiaotang-zhang",
+        "project": "IsaacLab",
+        "name": datetime.datetime.now().strftime("%y-%m-%d_%H-%M-%S-%f"),
+    }
 }
 
 # ==================== Rollout Memory ====================
@@ -198,7 +207,7 @@ agent = AMP(models=models,
             device=device)
 
 # configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": 80000}
+cfg_trainer = {"timesteps": args_cli.steps}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 # resume checkpoint (if specified)
@@ -211,3 +220,9 @@ if args_cli.checkpoint:
 
 # start training
 trainer.train()
+
+# close the simulator
+env.close()
+
+# close sim app
+simulation_app.close()

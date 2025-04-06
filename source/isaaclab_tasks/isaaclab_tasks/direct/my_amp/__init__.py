@@ -34,3 +34,14 @@ gym.register(
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )
+
+## Two Robots registrationo
+gym.register(
+    id="My-AMP-InterHuman-2Robots",
+    entry_point=f"{__name__}.my_env_2robots:MyEnv2Robots",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.my_env_2robots_cfg:MyAmpInterHumanEnvCfg",
+        "skrl_amp_cfg_entry_point": f"{agents.__name__}:skrl_amp_interhuman_cfg.yaml",
+    },
+)

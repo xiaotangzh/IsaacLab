@@ -56,7 +56,7 @@ class MyEnv(DirectRLEnv):
         self.ref_state_buffer_length, self.ref_state_buffer_index = 400, 0
         self.ref_state_buffer = {}
         if self.cfg.sync_motion:
-            self.reset_reference_state()
+            self.reset_reference_buffer()
 
     def _setup_scene(self):
         self.robot = Articulation(self.cfg.robot)
@@ -111,14 +111,6 @@ class MyEnv(DirectRLEnv):
         return died, time_out
     
     def _get_rewards(self) -> torch.Tensor:
-        # target_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device)
-        # current_quat = self.robot.data.body_quat_w[:, self.ref_body_index]
-        # # 确保四元数归一化（如果数据可能未归一化）
-        # current_quat = current_quat / torch.norm(current_quat, dim=-1, keepdim=True)
-        # # 计算点积（绝对值处理 q 和 -q 的对称性）
-        # reward = torch.abs(torch.sum(target_quat * current_quat, dim=-1)) - 0.5
-        # print(f'reward: {torch.mean(reward).item()}')
-        # return reward
         return torch.ones((self.num_envs,), dtype=torch.float32, device=self.sim.device)
 
     def _reset_idx(self, env_ids: torch.Tensor | None): # env_ids: the ids of envs to be reset
@@ -225,7 +217,7 @@ class MyEnv(DirectRLEnv):
         
         return root_state, dof_pos, dof_vel
     
-    def reset_reference_state(self, env_ids: torch.Tensor | None=None):
+    def reset_reference_buffer(self, env_ids: torch.Tensor | None=None):
         env_ids = self.robot._ALL_INDICES if env_ids is None else env_ids
         num_samples = env_ids.shape[0]
         motion_root_index = self._motion_loader.get_body_index([self.cfg.reference_body])[0]
@@ -238,7 +230,7 @@ class MyEnv(DirectRLEnv):
             ref_body_rotations,
             ref_root_linear_velocity,
             ref_root_angular_velocity,
-        ) = self._motion_loader.sample_reference_state(num_samples)
+        ) = self._motion_loader.get_all_references(num_samples)
         ref_root_state = self.robot.data.default_root_state[env_ids].unsqueeze(1).expand(-1, ref_dof_positions.shape[1], -1).clone()
         ref_root_state[:, :, 0:3] = ref_body_positions[:, :, motion_root_index] + self.scene.env_origins[env_ids].unsqueeze(1)
         ref_root_state[:, :, 2] += self.init_root_height  # lift the humanoid slightly to avoid collisions with the ground
