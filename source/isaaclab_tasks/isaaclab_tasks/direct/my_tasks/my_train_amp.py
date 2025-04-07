@@ -1,5 +1,5 @@
 # import the agent and its default configuration
-from agents.my_amp import AMP, AMP_DEFAULT_CONFIG
+from isaaclab_tasks.direct.my_amp.agents.amp import AMP, AMP_DEFAULT_CONFIG
 from skrl.trainers.torch import SequentialTrainer
 
 from skrl.agents.torch.ppo import PPO, PPO_DEFAULT_CONFIG

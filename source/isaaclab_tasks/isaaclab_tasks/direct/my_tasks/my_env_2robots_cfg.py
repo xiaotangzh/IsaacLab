@@ -69,24 +69,11 @@ class MyEnv2RobotsCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=16, env_spacing=5.0, replicate_physics=True)
 
     # robot
-    # robot: ArticulationCfg = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot").replace(
-    #     actuators={
-    #         "body": ImplicitActuatorCfg(
-    #             joint_names_expr=[".*"],
-    #             velocity_limit=100.0,
-    #             stiffness=None,
-    #             damping=None,
-    #         ),
-    #     },
-    # )
     robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
     robot2: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot2")
 
 @configclass
 class MyAmpInterHumanEnvCfg(MyEnv2RobotsCfg):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/2069_1.npz")
-    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/2069_2.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
+    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/26_2.npz")
     
-# @configclass
-# class MyPPOEnvCfg(MyEnv2RobotsCfg):
-#     motion_file = os.path.join(MOTIONS_DIR, "InterHuman/2069.npz")

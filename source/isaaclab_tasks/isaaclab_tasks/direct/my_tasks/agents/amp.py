@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from skrl import config, logger
-from .my_agent import Agent
+from .agent import Agent
 from skrl.memories.torch import Memory
 from skrl.models.torch import Model
 from skrl.resources.schedulers.torch import KLAdaptiveLR
@@ -80,7 +80,7 @@ AMP_DEFAULT_CONFIG = {
 # fmt: on
 
 
-class MixtureOfExperts(Agent):
+class AMP(Agent):
     def __init__(
         self,
         models: Mapping[str, Model],
@@ -148,26 +148,22 @@ class MixtureOfExperts(Agent):
         self.collect_observation = collect_observation
 
         # models
-        self.high_level_policy = self.models.get("high level policy", None)
-        self.low_level_policy = self.models.get("low level policy", None)
-        self.high_level_value = self.models.get("high level value", None)
-        self.low_level_value = self.models.get("low level value", None)
+        self.policy = self.models.get("policy", None)
+        self.value = self.models.get("value", None)
         self.discriminator = self.models.get("discriminator", None)
 
         # checkpoint models
-        self.checkpoint_modules["high level policy"] = self.high_level_policy
-        self.checkpoint_modules["low level policy"] = self.low_level_policy
-        self.checkpoint_modules["high level value"] = self.high_level_value
-        self.checkpoint_modules["low level value"] = self.low_level_value
+        self.checkpoint_modules["policy"] = self.policy
+        self.checkpoint_modules["value"] = self.value
         self.checkpoint_modules["discriminator"] = self.discriminator
 
         # broadcast models' parameters in distributed runs
         if config.torch.is_distributed:
             logger.info(f"Broadcasting models' parameters")
-            if self.high_level_policy is not None:
-                self.high_level_policy.broadcast_parameters()
-            if self.high_level_value is not None:
-                self.high_level_value.broadcast_parameters()
+            if self.policy is not None:
+                self.policy.broadcast_parameters()
+            if self.value is not None:
+                self.value.broadcast_parameters()
             if self.discriminator is not None:
                 self.discriminator.broadcast_parameters()
 
@@ -222,27 +218,17 @@ class MixtureOfExperts(Agent):
             self.scaler = torch.cuda.amp.GradScaler(enabled=self._mixed_precision)
 
         # set up optimizer and learning rate scheduler
-        if self.high_level_policy is not None and self.high_level_value is not None and self.discriminator is not None:
-            self.high_level_optimizer = torch.optim.Adam(
-                itertools.chain(self.high_level_policy.parameters(), self.high_level_value.parameters(), self.discriminator.parameters()),
+        if self.policy is not None and self.value is not None and self.discriminator is not None:
+            self.optimizer = torch.optim.Adam(
+                itertools.chain(self.policy.parameters(), self.value.parameters(), self.discriminator.parameters()),
                 lr=self._learning_rate,
             )
-            self.low_level_optimizer = torch.optim.Adam(
-                itertools.chain(self.low_level_policy.parameters(), self.low_level_value.parameters()),
-                lr=self._learning_rate
-            )
-            
-            # schedulers
             if self._learning_rate_scheduler is not None:
-                self.high_level_scheduler = self._learning_rate_scheduler(
-                    self.high_level_optimizer, **self.cfg["learning_rate_scheduler_kwargs"]
+                self.scheduler = self._learning_rate_scheduler(
+                    self.optimizer, **self.cfg["learning_rate_scheduler_kwargs"]
                 )
-                self.low_level_scheduler = self._learning_rate_scheduler(
-                    self.low_level_optimizer, **self.cfg["learning_rate_scheduler_kwargs"]
-                )
-            
-            self.checkpoint_modules["high level optimizer"] = self.high_level_optimizer
-            self.checkpoint_modules["low level optimizer"] = self.low_level_optimizer
+
+            self.checkpoint_modules["optimizer"] = self.optimizer
 
         # set up preprocessors
         if self._state_preprocessor:
@@ -276,40 +262,26 @@ class MixtureOfExperts(Agent):
             self.memory.create_tensor(name="rewards", size=1, dtype=torch.float32)
             self.memory.create_tensor(name="terminated", size=1, dtype=torch.bool)
             self.memory.create_tensor(name="truncated", size=1, dtype=torch.bool)
+            self.memory.create_tensor(name="log_prob", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="values", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="returns", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="advantages", size=1, dtype=torch.float32)
+            
             self.memory.create_tensor(name="amp_states", size=self.amp_observation_space, dtype=torch.float32)
-            
-            # todo change space size
-            self.memory.create_tensor(name="gating_variables", size=self.observation_space, dtype=torch.float32)
-            self.memory.create_tensor(name="next_gating_variables", size=self.observation_space, dtype=torch.float32)
-            
-            self.memory.create_tensor(name="gating_log_prob", size=1, dtype=torch.float32)
-            self.memory.create_tensor(name="gating_values", size=1, dtype=torch.float32)
-            self.memory.create_tensor(name="gating_next_values", size=1, dtype=torch.float32)
-            self.memory.create_tensor(name="gating_returns", size=1, dtype=torch.float32)
-            self.memory.create_tensor(name="gating_advantages", size=1, dtype=torch.float32)
-            
-            self.memory.create_tensor(name="action_log_prob", size=1, dtype=torch.float32)
-            self.memory.create_tensor(name="action_values", size=1, dtype=torch.float32)
-            self.memory.create_tensor(name="action_next_values", size=1, dtype=torch.float32)
-            self.memory.create_tensor(name="action_returns", size=1, dtype=torch.float32)
-            self.memory.create_tensor(name="action_advantages", size=1, dtype=torch.float32)
-            
-        self.gating_batch_names = [
+            self.memory.create_tensor(name="next_values", size=1, dtype=torch.float32)
+
+        self.tensors_names = [
             "states",
-            "gating_variables",
-            "gating_log_prob",
-            "gating_values",
-            "gating_returns"
-            "gating_advantages",
-            "amp_states",
-        ]
-        self.action_batch_names = [
-            "gating_variables",
             "actions",
-            "action_log_prob",
-            "action_values",
-            "action_returns"
-            "action_advantages",
+            "rewards",
+            "next_states",
+            "terminated",
+            "log_prob",
+            "values",
+            "returns",
+            "advantages",
+            "amp_states",
+            "next_values",
         ]
 
         # create tensors for motion dataset and reply buffer
@@ -322,9 +294,7 @@ class MixtureOfExperts(Agent):
                 self.motion_dataset.add_samples(states=self.collect_reference_motions(self._amp_batch_size))
 
         # create temporary variables needed for storage and computation
-        self._current_action_log_prob = None
-        self._current_gating_log_prob = None
-        self._current_gating_variables = None
+        self._current_log_prob = None
         self._current_states = None
 
     def act(self, states: torch.Tensor, timestep: int, timesteps: int) -> torch.Tensor:
@@ -348,19 +318,15 @@ class MixtureOfExperts(Agent):
 
         # sample random actions
         # TODO, check for stochasticity
-        if timestep < self._random_timesteps: # random_timesteps normally set to be zero
-            return self.high_level_policy.random_act({"states": states}, role="policy")
+        if timestep < self._random_timesteps:
+            return self.policy.random_act({"states": states}, role="policy")
 
         # sample stochastic actions
         with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-            gating_variables, gating_log_prob, gating_outputs = self.high_level_policy.act({"states": states}, role="policy")
-            actions, action_log_prob, action_outputs = self.low_level_policy.act({"gating_variables": gating_variables}, role="policy")
-            
-            self._current_action_log_prob = action_log_prob
-            self._curernt_gating_log_prob = gating_log_prob
-            self._current_gating_variables = gating_variables
+            actions, log_prob, outputs = self.policy.act({"states": states}, role="policy")
+            self._current_log_prob = log_prob
 
-        return actions, action_log_prob, action_outputs
+        return actions, log_prob, outputs
 
     def record_transition(
         self,
@@ -412,46 +378,33 @@ class MixtureOfExperts(Agent):
 
             # compute values
             with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-                gating_values, _, _ = self.high_level_value.act({"states": self._state_preprocessor(states)}, role="value")
-                gating_values = self._value_preprocessor(gating_values, inverse=True)
-                
-                action_values, _, _ = self.low_level_value.act({"gating_variables": self._current_gating_variables}, role="value")
-                action_values = self._value_preprocessor(action_values, inverse=True)
+                values, _, _ = self.value.act({"states": self._state_preprocessor(states)}, role="value")
+                values = self._value_preprocessor(values, inverse=True)
 
             # time-limit (truncation) bootstrapping
             if self._time_limit_bootstrap:
-                rewards += self._discount_factor * action_values * truncated #todo check if this is correct
+                rewards += self._discount_factor * values * truncated
 
             # compute next values
             with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-                gating_next_values, _, _ = self.high_level_value.act({"states": self._state_preprocessor(next_states)}, role="value")
-                gating_next_values = self._value_preprocessor(gating_next_values, inverse=True)
-                gating_next_values *= terminated.view(-1, 1).logical_not()
-                
-                # compute next gating variable
-                next_gating_variables, _, __ = self.high_level_policy.act({"states": self._state_preprocessor(next_states)}, role="policy")
-                action_next_values, _, _ = self.low_level_value.act({"gating_variables": next_gating_variables}, role="value")
-                action_next_values = self._value_preprocessor(action_next_values, inverse=True)
-                action_next_values *= terminated.view(-1, 1).logical_not()
+                next_values, _, _ = self.value.act({"states": self._state_preprocessor(next_states)}, role="value")
+                next_values = self._value_preprocessor(next_values, inverse=True)
+                if "terminate" in infos:
+                    next_values *= infos["terminate"].view(-1, 1).logical_not()  # compatibility with IsaacGymEnvs
+                else:
+                    next_values *= terminated.view(-1, 1).logical_not()
 
             self.memory.add_samples(
                 states=states,
-                gating_variables = self._current_gating_variables,
                 actions=actions,
                 rewards=rewards,
                 next_states=next_states,
-                next_gating_variables = next_gating_variables,
                 terminated=terminated,
                 truncated=truncated,
+                log_prob=self._current_log_prob,
+                values=values,
                 amp_states=amp_states,
-                
-                gating_log_prob=self._current_gating_log_prob,
-                gating_values=gating_values,
-                gating_next_values=gating_next_values,
-                
-                action_log_prob=self._current_action_log_prob,
-                action_values=action_values,
-                action_next_values=action_next_values,
+                next_values=next_values,
             )
             for memory in self.secondary_memories:
                 memory.add_samples(
@@ -461,15 +414,10 @@ class MixtureOfExperts(Agent):
                     next_states=next_states,
                     terminated=terminated,
                     truncated=truncated,
+                    log_prob=self._current_log_prob,
+                    values=values,
                     amp_states=amp_states,
-                    
-                    gating_log_prob=self._current_gating_log_prob,
-                    gating_values=gating_values,
-                    gating_next_values=gating_next_values,
-                    
-                    action_log_prob=self._current_action_log_prob,
-                    action_values=action_values,
-                    action_next_values=action_next_values,
+                    next_values=next_values,
                 )
 
     def pre_interaction(self, timestep: int, timesteps: int) -> None:
@@ -492,110 +440,14 @@ class MixtureOfExperts(Agent):
         :type timesteps: int
         """
         self._rollout += 1
-        
-        # update high-level policy
         if not self._rollout % self._rollouts and timestep >= self._learning_starts:
             self.set_mode("train")
             self._update(timestep, timesteps)
             self.set_mode("eval")
-        
-        # update low-level policy
-        self._update_low_level_policy(timestep, timesteps)
 
         # write tracking data and checkpoints
         super().post_interaction(timestep, timesteps)
 
-    def _update_low_level_policy(self, timestep: int, timesteps: int) -> None:
-        # 从内存中获取数据
-        gating_variables = self.memory.get_tensor_by_name("gating_variables")
-        rewards = self.memory.get_tensor_by_name("rewards")
-        next_gating_variables = self.memory.get_tensor_by_name("next_gating_variables")
-        terminated = self.memory.get_tensor_by_name("terminated")
-        low_level_actions = self.memory.get_tensor_by_name("low_level_actions")
-        low_level_log_prob = self.memory.get_tensor_by_name("low_level_log_prob")
-
-        # 计算低层GAE优势（使用独立的价值网络）
-        with torch.no_grad(), torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-            values = self.low_level_value.act({"gatint_variables": gating_variables}, role="low_level_value")[0]
-            next_values = self.low_level_value.act({"gatint_variables": next_gating_variables}, role="low_level_value")[0]
-            next_values *= (~terminated).unsqueeze(-1)  # 终止状态价值归零
-            advantages = rewards + self._discount_factor * next_values - values
-            returns = advantages + values  # 计算回报
-
-        # 采样mini-batches
-        sampled_batches = self.memory.sample_all(names=self.gating_batch_names, mini_batches=self._mini_batches)
-
-        # 低层策略优化（多epoch）
-        for _ in range(self._learning_epochs):
-            kl_divergences = []
-            
-            # mini-batch
-            for batch in sampled_batches:
-                sampled_gatings, sampled_actions, sampled_log_prob, sampled_values, sampled_returns, sampled_advantages = batch
-
-                # 计算策略损失
-                with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-                    # 重新计算动作和log_prob
-                    _, next_log_prob, _ = self.low_level_policy.act({
-                        "gating_variables": sampled_gatings,
-                        "taken_actions": sampled_actions
-                    }, role="low_level_policy")
-
-                    # # PPO clipped objective
-                    # ratio = torch.exp(new_log_prob - sampled_log_prob)
-                    # surrogate = advantages * ratio
-                    # surrogate_clipped = advantages * torch.clip(ratio, 1.0 - self._ratio_clip, 1.0 + self._ratio_clip)
-                    # policy_loss = -torch.min(surrogate, surrogate_clipped).mean()
-
-                    # # 价值损失（低层独立价值网络）
-                    # predicted_values = self.low_level_value.act({"gating_variables": sampled_gatings}, role="low_level_value")[0]
-                    # value_loss = F.mse_loss(predicted_values, returns)
-                    
-                    # compute approximate KL divergence
-                    with torch.no_grad():
-                        ratio = next_log_prob - sampled_log_prob
-                        kl_divergence = ((torch.exp(ratio) - 1) - ratio).mean()
-                        kl_divergences.append(kl_divergence)
-
-                    # compute entropy loss
-                    if self._entropy_loss_scale:
-                        entropy_loss = -self._entropy_loss_scale * self.low_level_policy.get_entropy(role="policy").mean()
-                    else:
-                        entropy_loss = 0
-
-                    # compute policy loss
-                    ratio = torch.exp(next_log_prob - sampled_log_prob)
-                    surrogate = sampled_advantages * ratio
-                    surrogate_clipped = sampled_advantages * torch.clip(
-                        ratio, 1.0 - self._ratio_clip, 1.0 + self._ratio_clip
-                    )
-                    policy_loss = -torch.min(surrogate, surrogate_clipped).mean()
-
-                    # compute value loss
-                    predicted_values, _, _ = self.low_level_value.act({"gating_variables": sampled_gatings}, role="value")
-                    if self._clip_predicted_values:
-                        predicted_values = sampled_values + torch.clip(
-                            predicted_values - sampled_values, min=-self._value_clip, max=self._value_clip
-                        )
-                    value_loss = self._value_loss_scale * F.mse_loss(sampled_returns, predicted_values)
-
-                    # optimization step
-                    self.low_level_optimizer.zero_grad()
-                    self.scaler.scale(policy_loss + entropy_loss + value_loss).backward()
-                    
-                    if config.torch.is_distributed:
-                        self.low_level_policy.reduce_parameters()
-                        
-                    if self._grad_norm_clip > 0:
-                        self.scaler.unscale_(self.low_level_optimizer)
-                        nn.utils.clip_grad_norm_(
-                            itertools.chain(self.low_level_policy.parameters(), self.low_level_value.parameters()),
-                            self._grad_norm_clip
-                        )
-                        
-                    self.scaler.step(self.low_level_optimizer)
-                    self.scaler.update()
-    
     def _update(self, timestep: int, timesteps: int) -> None:
         """Algorithm's main update step
 
@@ -671,8 +523,8 @@ class MixtureOfExperts(Agent):
         combined_rewards = self._task_reward_weight * rewards + self._style_reward_weight * style_reward
 
         # compute returns and advantages
-        values = self.memory.get_tensor_by_name("gating_values")
-        next_values = self.memory.get_tensor_by_name("gating_next_values")
+        values = self.memory.get_tensor_by_name("values")
+        next_values = self.memory.get_tensor_by_name("next_values")
         returns, advantages = compute_gae(
             rewards=combined_rewards,
             dones=self.memory.get_tensor_by_name("terminated") | self.memory.get_tensor_by_name("truncated"),
@@ -682,12 +534,12 @@ class MixtureOfExperts(Agent):
             lambda_coefficient=self._lambda,
         )
 
-        self.memory.set_tensor_by_name("gating_values", self._value_preprocessor(values, train=True))
-        self.memory.set_tensor_by_name("gating_returns", self._value_preprocessor(returns, train=True))
-        self.memory.set_tensor_by_name("gating_advantages", advantages)
+        self.memory.set_tensor_by_name("values", self._value_preprocessor(values, train=True))
+        self.memory.set_tensor_by_name("returns", self._value_preprocessor(returns, train=True))
+        self.memory.set_tensor_by_name("advantages", advantages)
 
         # sample mini-batches from memory
-        sampled_batches = self.memory.sample_all(names=self.action_batch_names, mini_batches=self._mini_batches)
+        sampled_batches = self.memory.sample_all(names=self.tensors_names, mini_batches=self._mini_batches)
         sampled_motion_batches = self.motion_dataset.sample(
             names=["states"], batch_size=self.memory.memory_size * self.memory.num_envs, mini_batches=self._mini_batches
         )
@@ -698,7 +550,7 @@ class MixtureOfExperts(Agent):
                 mini_batches=self._mini_batches,
             )
         else:
-            sampled_replay_batches = [[batches[self.action_batch_names.index("amp_states")]] for batches in sampled_batches]
+            sampled_replay_batches = [[batches[self.tensors_names.index("amp_states")]] for batches in sampled_batches]
 
         cumulative_policy_loss = 0
         cumulative_entropy_loss = 0
@@ -712,20 +564,24 @@ class MixtureOfExperts(Agent):
             # mini-batches loop
             for batch_index, (
                 sampled_states,
-                sampled_gatings,
+                sampled_actions,
+                _,
+                _,
+                _,
                 sampled_log_prob,
                 sampled_values,
                 sampled_returns,
                 sampled_advantages,
                 sampled_amp_states,
+                _,
             ) in enumerate(sampled_batches):
 
                 with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
 
                     sampled_states = self._state_preprocessor(sampled_states, train=True)
 
-                    _, next_log_prob, _ = self.high_level_policy.act(
-                        {"states": sampled_states, "taken_actions": sampled_gatings}, role="policy"
+                    _, next_log_prob, _ = self.policy.act(
+                        {"states": sampled_states, "taken_actions": sampled_actions}, role="policy"
                     )
 
                     # compute approximate KL divergence
@@ -736,7 +592,7 @@ class MixtureOfExperts(Agent):
 
                     # compute entropy loss
                     if self._entropy_loss_scale:
-                        entropy_loss = -self._entropy_loss_scale * self.high_level_policy.get_entropy(role="policy").mean()
+                        entropy_loss = -self._entropy_loss_scale * self.policy.get_entropy(role="policy").mean()
                     else:
                         entropy_loss = 0
 
@@ -750,7 +606,7 @@ class MixtureOfExperts(Agent):
                     policy_loss = -torch.min(surrogate, surrogate_clipped).mean()
 
                     # compute value loss
-                    predicted_values, _, _ = self.high_level_value.act({"states": sampled_states}, role="value")
+                    predicted_values, _, _ = self.value.act({"states": sampled_states}, role="value")
 
                     if self._clip_predicted_values:
                         predicted_values = sampled_values + torch.clip(
@@ -828,24 +684,24 @@ class MixtureOfExperts(Agent):
                     discriminator_loss *= self._discriminator_loss_scale
 
                 # optimization step
-                self.high_level_optimizer.zero_grad()
+                self.optimizer.zero_grad()
                 self.scaler.scale(policy_loss + entropy_loss + value_loss + discriminator_loss).backward()
 
                 if config.torch.is_distributed:
-                    self.high_level_policy.reduce_parameters()
-                    self.high_level_value.reduce_parameters()
+                    self.policy.reduce_parameters()
+                    self.value.reduce_parameters()
                     self.discriminator.reduce_parameters()
 
                 if self._grad_norm_clip > 0:
-                    self.scaler.unscale_(self.high_level_optimizer)
+                    self.scaler.unscale_(self.optimizer)
                     nn.utils.clip_grad_norm_(
                         itertools.chain(
-                            self.high_level_policy.parameters(), self.high_level_value.parameters(), self.discriminator.parameters()
+                            self.policy.parameters(), self.value.parameters(), self.discriminator.parameters()
                         ),
                         self._grad_norm_clip,
                     )
 
-                self.scaler.step(self.high_level_optimizer)
+                self.scaler.step(self.optimizer)
                 self.scaler.update()
 
                 # update cumulative losses
@@ -857,15 +713,15 @@ class MixtureOfExperts(Agent):
 
             # update learning rate
             if self._learning_rate_scheduler:
-                if isinstance(self.high_level_scheduler, KLAdaptiveLR):
+                if isinstance(self.scheduler, KLAdaptiveLR):
                     kl = torch.tensor(kl_divergences, device=self.device).mean()
                     # reduce (collect from all workers/processes) KL in distributed runs
                     if config.torch.is_distributed:
                         torch.distributed.all_reduce(kl, op=torch.distributed.ReduceOp.SUM)
                         kl /= config.torch.world_size
-                    self.high_level_scheduler.step(kl.item())
+                    self.scheduler.step(kl.item())
                 else:
-                    self.high_level_scheduler.step()
+                    self.scheduler.step()
 
         # update AMP replay buffer
         self.reply_buffer.add_samples(states=amp_states.view(-1, amp_states.shape[-1]))
@@ -881,7 +737,7 @@ class MixtureOfExperts(Agent):
             "Loss / Discriminator loss", cumulative_discriminator_loss / (self._learning_epochs * self._mini_batches)
         )
 
-        self.track_data("Policy / Standard deviation", self.high_level_policy.distribution(role="policy").stddev.mean().item())
+        self.track_data("Policy / Standard deviation", self.policy.distribution(role="policy").stddev.mean().item())
 
         if self._learning_rate_scheduler:
-            self.track_data("Learning / Learning rate", self.high_level_scheduler.get_last_lr()[0])
+            self.track_data("Learning / Learning rate", self.scheduler.get_last_lr()[0])

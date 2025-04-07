@@ -7,7 +7,7 @@ import numpy as np
 import os
 from tqdm import tqdm
 
-def convert(path, file_name, person: str = "person1"):
+def convert(path, file_name, person: str = "person1", visualize: bool = False):
     SKMotion = run(
         in_file=f"in_files/{file_name}.pkl",
         SKMotion_out_file=f"{path}/{file_name}.npy",
@@ -50,10 +50,12 @@ def convert(path, file_name, person: str = "person1"):
         data['root_rotation'] = fromXYZWtoWXYZ(data['root_rotation'])
         data['local_rotations'] = fromXYZWtoWXYZ(data['local_rotations'])
         data['body_rotations'] = fromXYZWtoWXYZ(data['body_rotations'])
-    print_dict(data)
+    # print_dict(data)
     # print(data['dof_positions'].shape)
-    # animate3D(data['body_positions'], highlight_joint=0, q=data['body_rotations'][:,0], w_last=w_last)
-    # animate3D(data['dof_positions'].reshape(-1, 24, 3))
+    
+    if visualize:
+        animate3D(data['body_positions'], highlight_joint=0, q=data['body_rotations'][:,0], w_last=w_last)
+        # animate3D(data['dof_positions'].reshape(-1, 24, 3))
     return data
 
 def print_dict(data):
@@ -82,6 +84,7 @@ def fromXYZWtoWXYZ(quats: torch.Tensor):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--in_file", type=str, default="in_files/1.pkl")
+    parser.add_argument("--visualize", action="store_true", default=False)
     args = parser.parse_args()
     
     min_frames = 300
@@ -93,11 +96,11 @@ if __name__ == "__main__":
         for file_name in tqdm(file_names):
             path, name = "../InterHuman", file_name.replace('.pkl','')
             if not two_persons:
-                data = convert(path=path, file_name=name)
+                data = convert(path=path, file_name=name, visualize=args.visualize)
                 save_npz(path, name, data, min_frames)
             else:
-                data1 = convert(path=path, file_name=name, person="person1")
-                data2 = convert(path=path, file_name=name, person="person2")
+                data1 = convert(path=path, file_name=name, person="person1", visualize=args.visualize)
+                data2 = convert(path=path, file_name=name, person="person2", visualize=args.visualize)
                 if check_frames_length(data1, data2):
                     save_npz(path, name+"_1", data1, min_frames)
                     save_npz(path, name+"_2", data2, min_frames)
@@ -106,11 +109,11 @@ if __name__ == "__main__":
     elif 'pkl' in args.in_file:
         path, name = "../InterHuman", args.in_file.replace('.pkl','').replace('in_files/','')
         if not two_persons:
-            data = convert(path=path, file_name=name)
+            data = convert(path=path, file_name=name, visualize=args.visualize)
             save_npz(path, name, data, min_frames)
         else:
-            data1 = convert(path=path, file_name=name, person="person1")
-            data2 = convert(path=path, file_name=name, person="person2")
+            data1 = convert(path=path, file_name=name, person="person1", visualize=args.visualize)
+            data2 = convert(path=path, file_name=name, person="person2", visualize=args.visualize)
             if check_frames_length(data1, data2):
                 save_npz(path, name+"_1", data1, min_frames)
                 save_npz(path, name+"_2", data2, min_frames)

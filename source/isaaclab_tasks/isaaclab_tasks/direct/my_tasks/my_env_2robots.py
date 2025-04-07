@@ -87,7 +87,7 @@ class MyEnv2Robots(DirectRLEnv):
         
     #! Pre-physics step
     def _pre_physics_step(self, actions: torch.Tensor):
-        actions = torch.clip(actions, min=-0.04, max=0.04) # clip the actions
+        # actions = torch.clip(actions, min=-0.04, max=0.04) # clip the actions
         self.actions = actions.clone()
 
     def _apply_action(self):
@@ -178,9 +178,41 @@ class MyEnv2Robots(DirectRLEnv):
             self.robot2.data.body_ang_vel_w[:, self.ref_body_index],
         )
 
-        if torch.isnan(obs_1).any() or torch.isnan(obs_2).any():
-            print("NaN in observation, stop training.")
-            sys.exit(0)
+        # check for NaN in observations
+        # if torch.isnan(obs_1).any() or torch.isnan(obs_2).any():
+        #     print("NaN in observation, stop training.")
+        #     sys.exit(0)
+        
+        # detect NaN in observations
+        nan_detected = False
+        nan_envs_1 = check_nan(obs_1)
+        nan_envs_2 = check_nan(obs_2)
+        nan_envs = torch.logical_or(nan_envs_1, nan_envs_2)
+        
+        if torch.any(nan_envs):
+            nan_detected = True
+            nan_env_ids = torch.nonzero(nan_envs, as_tuple=False).flatten()
+            print(f"Warning: NaN detected in envs {nan_env_ids.tolist()}, resetting these envs.")
+            self._reset_idx(nan_env_ids)
+            
+            # reset observations for the affected envs
+            if len(nan_env_ids) > 0:
+                obs_1[nan_env_ids] = compute_obs(
+                    self.robot1.data.joint_pos[nan_env_ids],
+                    self.robot1.data.joint_vel[nan_env_ids],
+                    self.robot1.data.body_pos_w[nan_env_ids, self.ref_body_index],
+                    self.robot1.data.body_quat_w[nan_env_ids, self.ref_body_index],
+                    self.robot1.data.body_lin_vel_w[nan_env_ids, self.ref_body_index],
+                    self.robot1.data.body_ang_vel_w[nan_env_ids, self.ref_body_index],
+                )
+                obs_2[nan_env_ids] = compute_obs(
+                    self.robot2.data.joint_pos[nan_env_ids],
+                    self.robot2.data.joint_vel[nan_env_ids],
+                    self.robot2.data.body_pos_w[nan_env_ids, self.ref_body_index],
+                    self.robot2.data.body_quat_w[nan_env_ids, self.ref_body_index],
+                    self.robot2.data.body_lin_vel_w[nan_env_ids, self.ref_body_index],
+                    self.robot2.data.body_ang_vel_w[nan_env_ids, self.ref_body_index],
+                )
 
         # update AMP observation history (pop out)
         for i in reversed(range(self.cfg.num_amp_observations - 1)):
@@ -379,3 +411,7 @@ def compute_obs(
         dim=-1,
     )
     return obs
+
+@torch.jit.script
+def check_nan(tensor: torch.Tensor) -> torch.Tensor:
+    return torch.isnan(tensor).any(dim=-1)
