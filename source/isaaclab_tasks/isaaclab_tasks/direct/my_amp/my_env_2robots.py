@@ -131,7 +131,7 @@ class MyEnv2Robots(DirectRLEnv):
         elif self.cfg.reward == "stand_forward":
             return self.reward_stand_forward()
         else:
-            raise NotImplementedError("Reward function not specified.")
+            raise NotImplementedError(f"Reward function ({self.cfg.reward}) unknown or not specified.")
 
     def _reset_idx(self, env_ids: torch.Tensor | None): # env_ids: the ids of envs needed to be reset
         if env_ids is None or len(env_ids) == self.num_envs:
