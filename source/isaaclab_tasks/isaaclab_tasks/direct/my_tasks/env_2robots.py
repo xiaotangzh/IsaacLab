@@ -136,9 +136,10 @@ class Env2Robots(DirectRLEnv):
             
         return died, time_out
     
+    #todo adapt to two robots
     def _get_rewards(self) -> torch.Tensor:
         if self.cfg.reward == "ones":
-            return self.reward_ones()
+            return self.reward_ones().unsqueeze(1).repeat(1, 2)
         elif self.cfg.reward == "stand_forward":
             return self.reward_stand_forward()
         elif self.cfg.reward == "imitation":
@@ -160,6 +161,13 @@ class Env2Robots(DirectRLEnv):
             start = "start" in self.cfg.reset_strategy
             root_state_1, joint_pos_1, joint_vel_1 = self.reset_strategy_random(env_ids, self._motion_loader_1, start)
             root_state_2, joint_pos_2, joint_vel_2 = self.reset_strategy_random(env_ids, self._motion_loader_2, start)
+
+            # update AMP observation
+            num_samples = env_ids.shape[0]
+            amp_observations_1 = self.collect_reference_motions(num_samples, self.sample_times, self._motion_loader_1)
+            amp_observations_2 = self.collect_reference_motions(num_samples, self.sample_times, self._motion_loader_2)
+            amp_observations = torch.cat([amp_observations_1, amp_observations_2], dim=-1)
+            self.amp_observation_buffer[env_ids] = amp_observations.view(num_samples, self.cfg.num_amp_observations, -1)
         else:
             raise ValueError(f"Unknown reset strategy: {self.cfg.reset_strategy}")
         
@@ -250,8 +258,9 @@ class Env2Robots(DirectRLEnv):
     def reset_strategy_random(
         self, env_ids: torch.Tensor, motion_loader: MotionLoader, start: bool = False
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]: # env_ids: the ids of envs to be reset
-        # sample random motion times (or zeros if start is True)
         num_samples = env_ids.shape[0]
+
+        # sample random motion times (or zeros if start is True)
         if motion_loader == self._motion_loader_1: # only sample once for both robots
             self.sample_times = np.zeros(num_samples) if start else motion_loader.sample_times(num_samples)
         # sample random motions
@@ -276,60 +285,44 @@ class Env2Robots(DirectRLEnv):
         dof_pos = dof_positions[:, self.motion_dof_indexes]
         dof_vel = dof_velocities[:, self.motion_dof_indexes]
 
-        # update AMP observation
-        amp_observations = self.collect_reference_motions(num_samples, self.sample_times)
-        if motion_loader == self._motion_loader_1:
-            self.amp_observation_buffer[env_ids] = amp_observations.view(num_samples, self.cfg.num_amp_observations, -1)
-        
         return root_state, dof_pos, dof_vel
 
-    # env.wrapper -> (skrl Runner) -> skrl AMP agent
-    def collect_reference_motions(self, num_samples: int, current_times: np.ndarray | None = None) -> torch.Tensor:
+    # Collect ground truth observations, used in agent
+    def collect_reference_motions(self, num_samples: int, current_times: np.ndarray | None = None, motion_loader: MotionLoader | None=None) -> torch.Tensor:
+        # if motion loader is None, randomly select one 
+        if motion_loader is None:
+            motion_loader = self._motion_loader_1 if np.random.rand() < 0.5 else self._motion_loader_2
+
         # sample random motion times (or use the one specified)
         if current_times is None:
-            current_times = self._motion_loader_1.sample_times(num_samples)
+            current_times = motion_loader.sample_times(num_samples)
         times = (
             np.expand_dims(current_times, axis=-1)
-            - self._motion_loader_1.dt * np.arange(0, self.cfg.num_amp_observations)
+            - motion_loader.dt * np.arange(0, self.cfg.num_amp_observations)
         ).flatten()
+
         # get motions
         (
-            dof_positions_1,
-            dof_velocities_1,
-            body_positions_1,
-            body_rotations_1,
-            root_linear_velocity_1,
-            root_angular_velocity_1,
-        ) = self._motion_loader_1.sample(num_samples=num_samples, times=times)
-        (
-            dof_positions_2,
-            dof_velocities_2,
-            body_positions_2,
-            body_rotations_2,
-            root_linear_velocity_2,
-            root_angular_velocity_2,
-        ) = self._motion_loader_2.sample(num_samples=num_samples, times=times)
+            dof_positions,
+            dof_velocities,
+            body_positions,
+            body_rotations,
+            root_linear_velocity,
+            root_angular_velocity,
+        ) = motion_loader.sample(num_samples=num_samples, times=times)
         
         # self.extras["text"] = #todo pass sampled motion text description to env.infos
         
         # compute AMP observation
-        amp_observation_1 = compute_obs(
-            dof_positions_1[:, self.motion_dof_indexes],
-            dof_velocities_1[:, self.motion_dof_indexes],
-            body_positions_1[:, self.motion_ref_body_index],
-            body_rotations_1[:, self.motion_ref_body_index],
-            root_linear_velocity_1,
-            root_angular_velocity_1,
+        amp_observation = compute_obs(
+            dof_positions[:, self.motion_dof_indexes],
+            dof_velocities[:, self.motion_dof_indexes],
+            body_positions[:, self.motion_ref_body_index],
+            body_rotations[:, self.motion_ref_body_index],
+            root_linear_velocity,
+            root_angular_velocity,
         )
-        amp_observation_2 = compute_obs(
-            dof_positions_2[:, self.motion_dof_indexes],
-            dof_velocities_2[:, self.motion_dof_indexes],
-            body_positions_2[:, self.motion_ref_body_index],
-            body_rotations_2[:, self.motion_ref_body_index],
-            root_linear_velocity_2,
-            root_angular_velocity_2,
-        )
-        return torch.cat([amp_observation_1, amp_observation_2], dim=-1).view(-1, self.amp_observation_size) # (num_envs, state transitions)
+        return amp_observation.view(-1, int(self.amp_observation_size/2)) # (num_envs, state transitions)
     
     def reset_reference_buffer(self, motion_loader: MotionLoader, ref_state_buffer: dict, env_ids: torch.Tensor | None=None):
         env_ids = self.robot1._ALL_INDICES if env_ids is None else env_ids

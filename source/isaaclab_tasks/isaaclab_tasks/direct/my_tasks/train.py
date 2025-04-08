@@ -31,6 +31,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # load and wrap the Isaac Lab environment
 AppLauncher.add_app_launcher_args(parser)
 args, hydra_args = parser.parse_known_args()
+experiment_name = f"{args.task} {args.name}" if args.name else f"{args.task} {datetime.datetime.now().strftime('%d_%H-%M')}"
 
 # start the app
 app_launcher = AppLauncher(args)
@@ -45,12 +46,12 @@ env = gymnasium.make(args.task, cfg=cfg, render_mode="rgb_array" if args.video e
 env = wrap_env(env)
 
 # agent configuration
-from agents.amp import AMP, AMP_DEFAULT_CONFIG
+from agents.amp_2robots import AMP, AMP_DEFAULT_CONFIG
 from agents.moe import MOE
 from agents.ppo import PPO, PPO_DEFAULT_CONFIG
-from models.amp import instantiate_AMP
-from models.moe import instantiate_MOE
-from models.ppo import instantiate_PPO
+from models.amp import *
+from models.moe import *
+from models.ppo import *
 agent, agent_cfg = None, None
 
 # IsaacLab AMP default configurations
@@ -85,7 +86,6 @@ if "AMP" in args.task:
     
     # custom configurations
     if args.lr: agent_cfg["learning_rate"] = args.lr
-    experiment_name = args.name if args.name else datetime.datetime.now().strftime("%y-%m-%d_%H-%M-%S-%f")
     agent_cfg["experiment"] = {
         "directory": os.path.join("logs", args.task), 
         "experiment_name": experiment_name, 
@@ -100,7 +100,7 @@ if "AMP" in args.task:
     }
     
     # instantiate the models
-    models = instantiate_AMP(env, params=args.params, device=device)
+    models = instantiate_AMP_2robots(env, params=args.params, device=device)
     agent = AMP(models=models,
                 memory=rollout_memory,  
                 cfg=agent_cfg,
@@ -121,7 +121,6 @@ elif "PPO" in args.task:
     
     # custom configurations
     if args.lr: agent_cfg["learning_rate"] = args.lr
-    experiment_name = args.name if args.name else datetime.datetime.now().strftime("%y-%m-%d_%H-%M-%S-%f")
     agent_cfg["experiment"] = {
         "directory": os.path.join("logs", args.task), 
         "experiment_name": experiment_name, 

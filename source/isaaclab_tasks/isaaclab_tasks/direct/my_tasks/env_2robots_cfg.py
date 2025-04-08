@@ -41,14 +41,14 @@ class Env2RobotsCfg(DirectRLEnvCfg):
     action_clip = [-0.1, 0.1]
     
     # reward
-    reward = "imitation"
+    reward = "ones"
     
     # motions
     motion_file_1: str = MISSING
     motion_file_2: str = MISSING
     reference_body = "Pelvis"
     sync_motion = False # apply reference actions instead of predicted actions to robots
-    reset_strategy = "random-start"  # default, random, random-start
+    reset_strategy = "random"  # default, random, random-start
     """Strategy to be followed when resetting each environment (humanoid's pose and joint states).
 
     * default: pose and joint states are set to the initial state of the asset.

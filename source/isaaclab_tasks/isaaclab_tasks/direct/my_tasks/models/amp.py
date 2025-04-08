@@ -72,3 +72,12 @@ def instantiate_AMP(env, params: int=1, device: torch.device | None=None):
     models["value"] = Value(env.observation_space.shape[0], env.action_space.shape[0], params=params, device=device)
     models["discriminator"] = Discriminator(env.amp_observation_size, env.action_space.shape[0], params=params, device=device)
     return models
+
+def instantiate_AMP_2robots(env, params: int=1, device: torch.device | None=None):
+    models = {}
+    models["policy1"] = Policy(int(env.observation_space.shape[0]/2), int(env.action_space.shape[0]/2), params=params, device=device)
+    models["value1"] = Value(int(env.observation_space.shape[0]/2), int(env.action_space.shape[0]/2), params=params, device=device)
+    models["policy2"] = Policy(int(env.observation_space.shape[0]/2), int(env.action_space.shape[0]/2), params=params, device=device)
+    models["value2"] = Value(int(env.observation_space.shape[0]/2), int(env.action_space.shape[0]/2), params=params, device=device)
+    models["discriminator"] = Discriminator(int(env.amp_observation_size/2), int(env.action_space.shape[0]/2), params=params, device=device)
+    return models
