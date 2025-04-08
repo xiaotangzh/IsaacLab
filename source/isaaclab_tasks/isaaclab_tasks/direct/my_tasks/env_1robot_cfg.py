@@ -9,7 +9,7 @@ import os
 from dataclasses import MISSING
 
 from isaaclab_assets import HUMANOID_28_CFG
-from isaaclab_assets.robots.smpl import SMPL_CFG
+from .robots.smpl import SMPL_CFG
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.assets import ArticulationCfg
 from isaaclab.envs import DirectRLEnvCfg
@@ -21,7 +21,7 @@ MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions"
 
 
 @configclass
-class MyEnv2RobotsCfg(DirectRLEnvCfg):
+class Env1RobotCfg(DirectRLEnvCfg):
     """Humanoid AMP environment config (base class)."""
 
     # env
@@ -29,8 +29,8 @@ class MyEnv2RobotsCfg(DirectRLEnvCfg):
     decimation = 2
 
     # spaces
-    observation_space = 151 * 2
-    action_space = 69 * 2
+    observation_space = 151
+    action_space = 69
     state_space = 0
     num_amp_observations = 2
     amp_observation_space = observation_space
@@ -38,15 +38,9 @@ class MyEnv2RobotsCfg(DirectRLEnvCfg):
     early_termination = True
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
-    
-    # reward
-    reward = "ones"
-    
-    # motions
-    motion_file_1: str = MISSING
-    motion_file_2: str = MISSING
+
+    motion_file: str = MISSING
     reference_body = "Pelvis"
-    sync_motion = False # apply reference actions instead of predicted actions to robots
     reset_strategy = "random"  # default, random, random-start
     """Strategy to be followed when resetting each environment (humanoid's pose and joint states).
 
@@ -54,6 +48,9 @@ class MyEnv2RobotsCfg(DirectRLEnvCfg):
     * random: pose and joint states are set by sampling motions at random, uniform times.
     * random-start: pose and joint states are set by sampling motion at the start (time zero).
     """
+
+    
+    sync_motion = False # apply reference actions instead of predicted actions to robots
 
     # simulation
     sim: SimulationCfg = SimulationCfg(
@@ -69,11 +66,22 @@ class MyEnv2RobotsCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=16, env_spacing=5.0, replicate_physics=True)
 
     # robot
-    robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
-    robot2: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot2")
+    # robot: ArticulationCfg = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot").replace(
+    #     actuators={
+    #         "body": ImplicitActuatorCfg(
+    #             joint_names_expr=[".*"],
+    #             velocity_limit=100.0,
+    #             stiffness=None,
+    #             damping=None,
+    #         ),
+    #     },
+    # )
+    robot: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot")
 
 @configclass
-class MyAmpInterHumanEnvCfg(MyEnv2RobotsCfg):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
-    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/26_2.npz")
+class AmpInterHumanEnvCfg(Env1RobotCfg):
+    motion_file = os.path.join(MOTIONS_DIR, "InterHuman/26.npz")
     
+@configclass
+class PPOEnvCfg(Env1RobotCfg):
+    motion_file = os.path.join(MOTIONS_DIR, "InterHuman/26.npz")

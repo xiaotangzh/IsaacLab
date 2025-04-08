@@ -66,7 +66,7 @@ class Discriminator(DeterministicMixin, Model):
         states = inputs["states"]
         return self.net(states), {}  # (discriminator_output, None)
     
-def instantiate_MoE(env, device):
+def instantiate_MOE(env, device):
     models = {}
     models["policy"] = Policy(env.observation_space.shape[0], env.action_space.shape[0], device)
     models["value"] = Value(env.observation_space.shape[0], env.action_space.shape[0], device)

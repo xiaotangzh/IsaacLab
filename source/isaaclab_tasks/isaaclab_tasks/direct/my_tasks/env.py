@@ -15,14 +15,14 @@ from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.math import quat_rotate
 
-from .my_env_cfg import MyEnvCfg
+from .env_1robot_cfg import Env1RobotCfg
 from .motions.motion_loader import MotionLoader
 import sys
 
 class MyEnv(DirectRLEnv):
-    cfg: MyEnvCfg
+    cfg: Env1RobotCfg
 
-    def __init__(self, cfg: MyEnvCfg, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: Env1RobotCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
         # action offset and scale

@@ -15,14 +15,14 @@ from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.math import quat_rotate
 
-from .my_env_2robots_cfg import MyEnv2RobotsCfg
+from .env_2robots_cfg import Env2RobotsCfg
 from .motions.motion_loader import MotionLoader
 import sys
 
-class MyEnv2Robots(DirectRLEnv):
-    cfg: MyEnv2RobotsCfg
+class Env2Robots(DirectRLEnv):
+    cfg: Env2RobotsCfg
 
-    def __init__(self, cfg: MyEnv2RobotsCfg, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: Env2RobotsCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
         # action offset and scale
@@ -30,12 +30,13 @@ class MyEnv2Robots(DirectRLEnv):
         dof_upper_limits = self.robot1.data.soft_joint_pos_limits[0, :, 1]
         self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
         self.action_scale = dof_upper_limits - dof_lower_limits
-        self.init_root_height = 0.07 # lift the humanoid slightly to avoid collisions with the ground
+        self.init_root_height = 0.07
         self.termination_heights = torch.tensor(self.cfg.termination_heights, device=self.device)
 
         # load motion
         self._motion_loader_1 = MotionLoader(motion_file=self.cfg.motion_file_1, device=self.device)
         self._motion_loader_2 = MotionLoader(motion_file=self.cfg.motion_file_2, device=self.device)
+        assert self._motion_loader_1.num_frames == self._motion_loader_2.num_frames
         self.sample_times = None # synchronize sampling times for two robots
 
         # DOF and key body indexes
@@ -54,14 +55,18 @@ class MyEnv2Robots(DirectRLEnv):
             (self.num_envs, self.cfg.num_amp_observations, self.cfg.amp_observation_space), device=self.device
         )
         
+        # do not lift root height in some tasks
+        if "imitation" in self.cfg.reward or self.cfg.sync_motion:
+            self.init_root_height = 0.0
+            self.cfg.episode_length_s = self._motion_loader_1.duration
+        
         # sync motion
-        self.ref_state_buffer_length, self.ref_state_buffer_index = 400, 0
+        self.ref_state_buffer_length, self.ref_state_buffer_index = self.max_episode_length, 0
         self.ref_state_buffer_1 = {}
         self.ref_state_buffer_2 = {}
-        if self.cfg.sync_motion:
-            self.reset_reference_buffer(self._motion_loader_1, self.ref_state_buffer_1)
-            self.reset_reference_buffer(self._motion_loader_2, self.ref_state_buffer_2)
-
+        self.reset_reference_buffer(self._motion_loader_1, self.ref_state_buffer_1)
+        self.reset_reference_buffer(self._motion_loader_2, self.ref_state_buffer_2)
+            
     def _setup_scene(self):
         self.robot1 = Articulation(self.cfg.robot1)
         self.robot2 = Articulation(self.cfg.robot2)
@@ -87,7 +92,8 @@ class MyEnv2Robots(DirectRLEnv):
         
     #! Pre-physics step
     def _pre_physics_step(self, actions: torch.Tensor):
-        # actions = torch.clip(actions, min=-0.04, max=0.04) # clip the actions
+        if self.cfg.action_clip[0] and self.cfg.action_clip[1]:
+            actions = torch.clip(actions, min=self.cfg.action_clip[0], max=self.cfg.action_clip[1]) # clip the actions
         self.actions = actions.clone()
 
     def _apply_action(self):
@@ -120,8 +126,13 @@ class MyEnv2Robots(DirectRLEnv):
             died = torch.zeros_like(time_out) 
         
         # end of reference buffer
-        if self.cfg.sync_motion and self.ref_state_buffer_index >= self.ref_state_buffer_length:
+        if self.cfg.sync_motion and self.ref_state_buffer_index >= self.ref_state_buffer_length: #todo could be refined
             died = torch.ones_like(time_out)
+            
+        # if reward is imitation, reset envs that are longer than the dataset frame length
+        if self.cfg.reward == "imitation":
+            died_imitation = self.episode_length_buf >= self._motion_loader_1.num_frames
+            died = torch.max(torch.stack([died, died_imitation], dim=0), dim=0).values
             
         return died, time_out
     
@@ -130,6 +141,8 @@ class MyEnv2Robots(DirectRLEnv):
             return self.reward_ones()
         elif self.cfg.reward == "stand_forward":
             return self.reward_stand_forward()
+        elif self.cfg.reward == "imitation":
+            return self.reward_imitation()
         else:
             raise NotImplementedError(f"Reward function ({self.cfg.reward}) unknown or not specified.")
 
@@ -224,30 +237,12 @@ class MyEnv2Robots(DirectRLEnv):
 
         return {"policy": obs}
     #! Post-physics step (End)
-    
-    def write_ref_state(self, robot, ref_state_buffer):
-        robot.write_root_link_pose_to_sim(ref_state_buffer['root_state'][:, self.ref_state_buffer_index, :7],
-                                          robot._ALL_INDICES)
-        robot.write_root_com_velocity_to_sim(ref_state_buffer['root_state'][:, self.ref_state_buffer_index, 7:],
-                                             robot._ALL_INDICES)
         
-        #todo what is the difference between the two lines below?
-        # self.robot.write_root_pose_to_sim(self.ref_state_buffer['root_state'][:, self.ref_state_buffer_index, :7], 
-        #                                        self.robot._ALL_INDICES)
-        # self.robot.write_root_state_to_sim(self.ref_state_buffer['root_state'][:, self.ref_state_buffer_index], 
-        #                                           self.robot._ALL_INDICES)
-        
-        robot.write_joint_state_to_sim(ref_state_buffer['joint_pos'][:, self.ref_state_buffer_index],
-                                       ref_state_buffer['joint_vel'][:, self.ref_state_buffer_index],
-                                       None, robot._ALL_INDICES)
-        
-        
-
     # reset strategies
     def reset_strategy_default(self, env_ids: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         root_state = self.robot1.data.default_root_state[env_ids].clone()
         root_state[:, :3] += self.scene.env_origins[env_ids]
-        root_state[:, 2] += 0.1  # lift the humanoid slightly to avoid collisions with the ground
+        root_state[:, 2] += self.init_root_height  # lift the humanoid slightly to avoid collisions with the ground
         joint_pos = self.robot1.data.default_joint_pos[env_ids].clone()
         joint_vel = self.robot1.data.default_joint_vel[env_ids].clone()
         return root_state, joint_pos, joint_vel
@@ -287,35 +282,6 @@ class MyEnv2Robots(DirectRLEnv):
             self.amp_observation_buffer[env_ids] = amp_observations.view(num_samples, self.cfg.num_amp_observations, -1)
         
         return root_state, dof_pos, dof_vel
-    
-    def reset_reference_buffer(self, motion_loader: MotionLoader, ref_state_buffer: dict, env_ids: torch.Tensor | None=None):
-        env_ids = self.robot1._ALL_INDICES if env_ids is None else env_ids
-        num_samples = env_ids.shape[0]
-        motion_root_index = motion_loader.get_body_index([self.cfg.reference_body])[0]
-        
-        # sample reference actions for robot 1
-        (
-            ref_dof_positions,
-            ref_dof_velocities,
-            ref_body_positions,
-            ref_body_rotations,
-            ref_root_linear_velocity,
-            ref_root_angular_velocity,
-        ) = motion_loader.get_all_references(num_samples)
-        
-        ref_root_state = self.robot1.data.default_root_state[env_ids].unsqueeze(1).expand(-1, ref_dof_positions.shape[1], -1).clone()
-        ref_root_state[:, :, 0:3] = ref_body_positions[:, :, motion_root_index] + self.scene.env_origins[env_ids].unsqueeze(1)
-        ref_root_state[:, :, 2] += self.init_root_height  # lift the humanoid slightly to avoid collisions with the ground
-        ref_root_state[:, :, 3:7] = ref_body_rotations[:, :, motion_root_index]
-        ref_root_state[:, :, 7:10] = ref_root_linear_velocity
-        ref_root_state[:, :, 10:13] = ref_root_angular_velocity
-        
-        # set reference buffer
-        ref_state_buffer.update({
-            "root_state": ref_root_state,
-            "joint_pos": ref_dof_positions[:, :, self.motion_dof_indexes],
-            "joint_vel": ref_dof_velocities[:, :, self.motion_dof_indexes],
-        })
 
     # env.wrapper -> (skrl Runner) -> skrl AMP agent
     def collect_reference_motions(self, num_samples: int, current_times: np.ndarray | None = None) -> torch.Tensor:
@@ -364,6 +330,50 @@ class MyEnv2Robots(DirectRLEnv):
             root_angular_velocity_2,
         )
         return torch.cat([amp_observation_1, amp_observation_2], dim=-1).view(-1, self.amp_observation_size) # (num_envs, state transitions)
+    
+    def reset_reference_buffer(self, motion_loader: MotionLoader, ref_state_buffer: dict, env_ids: torch.Tensor | None=None):
+        env_ids = self.robot1._ALL_INDICES if env_ids is None else env_ids
+        num_samples = env_ids.shape[0]
+        motion_root_index = motion_loader.get_body_index([self.cfg.reference_body])[0]
+        
+        # sample reference actions
+        (
+            ref_dof_positions,
+            ref_dof_velocities,
+            ref_body_positions,
+            ref_body_rotations,
+            ref_root_linear_velocity,
+            ref_root_angular_velocity,
+        ) = motion_loader.get_all_references(num_samples)
+        
+        ref_root_state = self.robot1.data.default_root_state[env_ids].unsqueeze(1).expand(-1, ref_dof_positions.shape[1], -1).clone()
+        ref_root_state[:, :, 0:3] = ref_body_positions[:, :, motion_root_index] + self.scene.env_origins[env_ids].unsqueeze(1)
+        ref_root_state[:, :, 3:7] = ref_body_rotations[:, :, motion_root_index]
+        ref_root_state[:, :, 7:10] = ref_root_linear_velocity
+        ref_root_state[:, :, 10:13] = ref_root_angular_velocity
+        
+        # set reference buffer
+        ref_state_buffer.update({
+            "root_state": ref_root_state,
+            "joint_pos": ref_dof_positions[:, :, self.motion_dof_indexes],
+            "joint_vel": ref_dof_velocities[:, :, self.motion_dof_indexes],
+        })
+    
+    def write_ref_state(self, robot, ref_state_buffer):
+        robot.write_root_link_pose_to_sim(ref_state_buffer['root_state'][:, self.ref_state_buffer_index, :7],
+                                          robot._ALL_INDICES)
+        robot.write_root_com_velocity_to_sim(ref_state_buffer['root_state'][:, self.ref_state_buffer_index, 7:],
+                                             robot._ALL_INDICES)
+        
+        #todo what is the difference between the two lines below?
+        # self.robot.write_root_pose_to_sim(self.ref_state_buffer['root_state'][:, self.ref_state_buffer_index, :7], 
+        #                                        self.robot._ALL_INDICES)
+        # self.robot.write_root_state_to_sim(self.ref_state_buffer['root_state'][:, self.ref_state_buffer_index], 
+        #                                           self.robot._ALL_INDICES)
+        
+        robot.write_joint_state_to_sim(ref_state_buffer['joint_pos'][:, self.ref_state_buffer_index],
+                                       ref_state_buffer['joint_vel'][:, self.ref_state_buffer_index],
+                                       None, robot._ALL_INDICES)
 
     def reward_stand_forward(self) -> torch.Tensor:
         target_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device)
@@ -374,6 +384,39 @@ class MyEnv2Robots(DirectRLEnv):
         current_quat = current_quat / torch.norm(current_quat, dim=-1, keepdim=True)
         reward = torch.abs(torch.sum(target_quat * current_quat, dim=-1)) - 0.5
         return reward
+    
+    def reward_imitation(self) -> torch.Tensor:
+        frames = self._motion_loader_1.num_frames
+        
+        obs1 = torch.cat([self.robot1.data.body_pos_w[:, self.ref_body_index],
+                        self.robot1.data.body_quat_w[:, self.ref_body_index],
+                        self.robot1.data.body_lin_vel_w[:, self.ref_body_index],
+                        self.robot1.data.body_ang_vel_w[:, self.ref_body_index],
+                        self.robot1.data.joint_pos,
+                        self.robot1.data.joint_vel], dim=-1)
+
+        ref1 = torch.cat([self.ref_state_buffer_1["root_state"],
+                          self.ref_state_buffer_1["joint_pos"].reshape(self.num_envs, frames, -1),
+                          self.ref_state_buffer_1["joint_vel"].reshape(self.num_envs, frames, -1)], dim=-1)
+        
+        obs2 = torch.cat([self.robot2.data.body_pos_w[:, self.ref_body_index],
+                        self.robot2.data.body_quat_w[:, self.ref_body_index],
+                        self.robot2.data.body_lin_vel_w[:, self.ref_body_index],
+                        self.robot2.data.body_ang_vel_w[:, self.ref_body_index],
+                        self.robot2.data.joint_pos,
+                        self.robot2.data.joint_vel], dim=-1)
+        ref2 = torch.cat([self.ref_state_buffer_2["root_state"],
+                          self.ref_state_buffer_2["joint_pos"].reshape(self.num_envs, frames, -1),
+                          self.ref_state_buffer_2["joint_vel"].reshape(self.num_envs, frames, -1)], dim=-1)
+        
+        # reward = torch.norm(torch.cat([obs1, obs2], dim=-1) - 
+        #                     torch.cat([ref1, ref2], dim=-1)[torch.arange(self.num_envs), self.episode_length_buf], 
+        #                     dim=-1)
+        reward = torch.mean(torch.cat([obs1, obs2], dim=-1) - 
+                            torch.cat([ref1, ref2], dim=-1)[torch.arange(self.num_envs), self.episode_length_buf], 
+                            dim=-1)
+
+        return 1.0 - torch.abs(reward)
 
     def reward_ones(self) -> torch.Tensor:
         return torch.ones((self.num_envs,), dtype=torch.float32, device=self.sim.device)

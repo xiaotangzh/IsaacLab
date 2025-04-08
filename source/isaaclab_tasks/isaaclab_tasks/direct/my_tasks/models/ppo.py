@@ -46,29 +46,9 @@ class Value(DeterministicMixin, Model):
     def compute(self, inputs, role):
         states = inputs["states"]
         return self.net(states), {}  # (value, None)
-
-# ==================== Discriminator Model (Deterministic) ====================
-class Discriminator(DeterministicMixin, Model):
-    def __init__(self, observation_space, action_space, params, device=None):
-        Model.__init__(self, observation_space, action_space, device)
-        DeterministicMixin.__init__(self, clip_actions=False)
-
-        # Network layers (same as Value network)
-        self.net = nn.Sequential(
-            nn.Linear(observation_space, params),
-            nn.ReLU(),
-            nn.Linear(params, int(params/2)),
-            nn.ReLU(),
-            nn.Linear(int(params/2), 1)  # Output single discriminator score
-        )
-
-    def compute(self, inputs, role):
-        states = inputs["states"]
-        return self.net(states), {}  # (discriminator_output, None)
     
-def instantiate_AMP(env, params: int=1, device: torch.device | None=None):
+def instantiate_PPO(env, params: int=1, device: torch.device | None=None):
     models = {}
     models["policy"] = Policy(env.observation_space.shape[0], env.action_space.shape[0], params=params, device=device)
     models["value"] = Value(env.observation_space.shape[0], env.action_space.shape[0], params=params, device=device)
-    models["discriminator"] = Discriminator(env.amp_observation_size, env.action_space.shape[0], params=params, device=device)
     return models

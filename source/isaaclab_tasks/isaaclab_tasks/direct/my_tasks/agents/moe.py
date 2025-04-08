@@ -80,7 +80,7 @@ AMP_DEFAULT_CONFIG = {
 # fmt: on
 
 
-class MoE(Agent):
+class MOE(Agent):
     def __init__(
         self,
         models: Mapping[str, Model],
