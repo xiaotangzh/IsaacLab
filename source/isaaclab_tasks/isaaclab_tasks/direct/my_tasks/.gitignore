@@ -1,0 +1,6 @@
+# My ignores
+*.pkl
+*.npy
+*.npz
+*.txt
+*.out

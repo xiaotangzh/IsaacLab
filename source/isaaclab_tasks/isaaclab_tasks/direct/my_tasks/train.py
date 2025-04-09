@@ -60,12 +60,12 @@ if "AMP" in args.task:
     agent_cfg = AMP_DEFAULT_CONFIG.copy()
     
     # IsaacLab AMP default configurations
-    # amp_cfg["state_preprocessor"] = RunningStandardScaler
-    # amp_cfg["state_preprocessor_kwargs"] = {"size": env.observation_space}
-    # amp_cfg["value_preprocessor"] = RunningStandardScaler 
-    # amp_cfg["value_preprocessor_kwargs"] = {"size": 1}
-    # amp_cfg["amp_state_preprocessor"] = RunningStandardScaler
-    # amp_cfg["amp_state_preprocessor_kwargs"] = {"size": env.amp_observation_size}
+    agent_cfg["state_preprocessor"] = RunningStandardScaler
+    agent_cfg["state_preprocessor_kwargs"] = {"size": env.observation_space}
+    agent_cfg["value_preprocessor"] = RunningStandardScaler 
+    agent_cfg["value_preprocessor_kwargs"] = {"size": 1}
+    agent_cfg["amp_state_preprocessor"] = RunningStandardScaler
+    agent_cfg["amp_state_preprocessor_kwargs"] = {"size": env.amp_observation_size}
     agent_cfg["discriminator_batch_size"] = 4096
     agent_cfg["clip_predicted_values"] = True
     
