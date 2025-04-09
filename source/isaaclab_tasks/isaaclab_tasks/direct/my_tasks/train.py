@@ -88,7 +88,7 @@ if "AMP" in args.task:
     if args.lr: agent_cfg["learning_rate"] = args.lr
     agent_cfg["experiment"] = {
         "directory": os.path.join("logs", args.task), 
-        "experiment_name": experiment_name, 
+        "experiment_name": args.name, 
         "write_interval": 100,   
         "checkpoint_interval": "auto",  
         "wandb": args.wandb,      
@@ -123,7 +123,7 @@ elif "PPO" in args.task:
     if args.lr: agent_cfg["learning_rate"] = args.lr
     agent_cfg["experiment"] = {
         "directory": os.path.join("logs", args.task), 
-        "experiment_name": experiment_name, 
+        "experiment_name": args.name, 
         "write_interval": 100,   
         "checkpoint_interval": "auto",  
         "wandb": args.wandb,      
