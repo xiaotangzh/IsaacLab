@@ -12,6 +12,7 @@ import os
 from isaaclab.app import AppLauncher
 import gymnasium
 import datetime
+import sys
 
 from utils.utils import *
 
@@ -143,7 +144,7 @@ elif "PPO" in args.task:
                 device=device)
 
 # configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": args.steps}
+cfg_trainer = {"timesteps": args.steps, "disable_progressbar": True if sys.platform.startswith("Linux") else False}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 # resume checkpoint (if specified)
