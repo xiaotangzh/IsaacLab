@@ -60,10 +60,3 @@ _build
 
 # Pre-Trained Checkpoints
 /.pretrained_checkpoints/
-
-# My ignores
-*.pkl
-*.npy
-*.npz
-*.txt
-*.out
