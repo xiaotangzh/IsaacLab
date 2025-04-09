@@ -62,7 +62,8 @@ if "AMP" in args.task:
     # IsaacLab AMP default configurations
     agent_cfg["state_preprocessor"] = RunningStandardScaler
     agent_cfg["state_preprocessor_kwargs"] = {"size": env.observation_space}
-    agent_cfg["value_preprocessor"] = RunningStandardScaler 
+    agent_cfg["value_preprocessor_1"] = RunningStandardScaler 
+    agent_cfg["value_preprocessor_2"] = RunningStandardScaler 
     agent_cfg["value_preprocessor_kwargs"] = {"size": 1}
     agent_cfg["amp_state_preprocessor"] = RunningStandardScaler
     agent_cfg["amp_state_preprocessor_kwargs"] = {"size": env.amp_observation_size}
@@ -144,7 +145,7 @@ elif "PPO" in args.task:
                 device=device)
 
 # configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": args.steps, "disable_progressbar": True if sys.platform.startswith("Linux") else False}
+cfg_trainer = {"timesteps": args.steps, "disable_progressbar": True if sys.platform.startswith("linux") else False}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 # resume checkpoint (if specified)

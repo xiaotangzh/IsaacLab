@@ -29,8 +29,9 @@ class Env2RobotsCfg(DirectRLEnvCfg):
     decimation = 2
 
     # spaces
-    observation_space = 151 * 2
-    action_space = 69 * 2
+    num_persons = 2
+    observation_space = 151 * num_persons
+    action_space = 69 * num_persons
     state_space = 0
     num_amp_observations = 2
     amp_observation_space = observation_space
@@ -38,7 +39,7 @@ class Env2RobotsCfg(DirectRLEnvCfg):
     early_termination = True
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
-    action_clip = [-0.1, 0.1]
+    action_clip = [None, None] #[-0.1, 0.1]
     
     # reward
     reward = "ones"

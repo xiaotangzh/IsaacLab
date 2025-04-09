@@ -535,7 +535,7 @@ class AMP(Agent):
         )
 
         self.memory.set_tensor_by_name("values", self._value_preprocessor(values, train=True))
-        self.memory.set_tensor_by_name("returns", self._value_preprocessor(returns, train=True))
+        self.memory.set_tensor_by_name("returns", self._value_preprocessor(returns, train=True)) 
         self.memory.set_tensor_by_name("advantages", advantages)
 
         # sample mini-batches from memory

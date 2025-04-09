@@ -190,7 +190,8 @@ class AMP(Agent):
         self._learning_rate_scheduler = self.cfg["learning_rate_scheduler"]
 
         self._state_preprocessor = self.cfg["state_preprocessor"]
-        self._value_preprocessor = self.cfg["value_preprocessor"]
+        self._value_preprocessor_1 = self.cfg["value_preprocessor_1"]
+        self._value_preprocessor_2 = self.cfg["value_preprocessor_2"]
         self._amp_state_preprocessor = self.cfg["amp_state_preprocessor"]
 
         self._discount_factor = self.cfg["discount_factor"]
@@ -243,11 +244,14 @@ class AMP(Agent):
         else:
             self._state_preprocessor = self._empty_preprocessor
 
-        if self._value_preprocessor:
-            self._value_preprocessor = self._value_preprocessor(**self.cfg["value_preprocessor_kwargs"])
-            self.checkpoint_modules["value_preprocessor"] = self._value_preprocessor
+        if self._value_preprocessor_1 and self._value_preprocessor_2:
+            self._value_preprocessor_1 = self._value_preprocessor_1(**self.cfg["value_preprocessor_kwargs"])
+            self._value_preprocessor_2 = self._value_preprocessor_2(**self.cfg["value_preprocessor_kwargs"])
+            self.checkpoint_modules["value_preprocessor_1"] = self._value_preprocessor_1
+            self.checkpoint_modules["value_preprocessor_2"] = self._value_preprocessor_2
         else:
-            self._value_preprocessor = self._empty_preprocessor
+            self._value_preprocessor_1 = self._empty_preprocessor
+            self._value_preprocessor_2 = self._empty_preprocessor
 
         if self._amp_state_preprocessor:
             self._amp_state_preprocessor = self._amp_state_preprocessor(**self.cfg["amp_state_preprocessor_kwargs"])
@@ -265,7 +269,7 @@ class AMP(Agent):
             self.memory.create_tensor(name="states", size=self.observation_space, dtype=torch.float32)
             self.memory.create_tensor(name="next_states", size=self.observation_space, dtype=torch.float32)
             self.memory.create_tensor(name="actions", size=self.action_space, dtype=torch.float32)
-            self.memory.create_tensor(name="rewards", size=2, dtype=torch.float32)
+            self.memory.create_tensor(name="rewards", size=1, dtype=torch.float32)
             self.memory.create_tensor(name="terminated", size=1, dtype=torch.bool)
             self.memory.create_tensor(name="truncated", size=1, dtype=torch.bool)
             self.memory.create_tensor(name="log_prob", size=2, dtype=torch.float32)
@@ -292,7 +296,7 @@ class AMP(Agent):
 
         # create tensors for motion dataset and reply buffer
         if self.motion_dataset is not None:
-            self.motion_dataset.create_tensor(name="states", size=int(self.amp_observation_space/2), dtype=torch.float32)
+            self.motion_dataset.create_tensor(name="states", size=self.amp_observation_space, dtype=torch.float32)
             self.reply_buffer.create_tensor(name="states", size=self.amp_observation_space, dtype=torch.float32)
 
             # initialize motion dataset
@@ -321,9 +325,7 @@ class AMP(Agent):
         if self._current_states is not None:
             states = self._current_states
 
-        states1, states2 = torch.chunk(states, 2, dim=-1)
-        states1 = self._state_preprocessor(states1)
-        states2 = self._state_preprocessor(states2)
+        states1, states2 = torch.chunk(self._state_preprocessor(states), 2, dim=-1)
 
         # sample stochastic actions
         with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
@@ -369,14 +371,12 @@ class AMP(Agent):
         if self._current_states is not None:
             states = self._current_states
 
-        #todo reward is reshaped somewhere between env and agent
-        rewards = rewards.view(self.memory.num_envs, -1)
         super().record_transition(
             states, actions, rewards, next_states, terminated, truncated, infos, timestep, timesteps
         )
 
-        states1, states2 = torch.chunk(states, 2, dim=-1)
-        next_states1, next_states2 = torch.chunk(next_states, 2, dim=-1)
+        states1, states2 = torch.chunk(self._state_preprocessor(states), 2, dim=-1)
+        next_states1, next_states2 = torch.chunk(self._state_preprocessor(next_states), 2, dim=-1)
 
         if self.memory is not None:
             amp_states = infos["amp_obs"]
@@ -387,38 +387,30 @@ class AMP(Agent):
             
             # compute values
             with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-                values1, _, _ = self.value1.act({"states": self._state_preprocessor(states1)}, role="value")
-                values1 = self._value_preprocessor(values1, inverse=True)
+                values1, _, _ = self.value1.act({"states": states1}, role="value")
+                values1 = self._value_preprocessor_1(values1, inverse=True)
 
-                values2, _, _ = self.value2.act({"states": self._state_preprocessor(states2)}, role="value")
-                values2 = self._value_preprocessor(values2, inverse=True)
+                values2, _, _ = self.value2.act({"states": states2}, role="value")
+                values2 = self._value_preprocessor_2(values2, inverse=True)
 
                 values = torch.cat([values1, values2], dim=-1)
 
             # time-limit (truncation) bootstrapping
             if self._time_limit_bootstrap:
-                rewards1, rewards2 = torch.chunk(rewards, 2, dim=-1)
-                rewards1 += self._discount_factor * values1 * truncated
-                rewards2 += self._discount_factor * values2 * truncated
-                rewards = torch.cat([rewards1, rewards2], dim=-1)
-            
-            #todo reward is reshaped somewhere between env and agent
-            rewards = rewards.view(self.memory.num_envs, -1)
+                rewards += self._discount_factor * values * truncated
 
             # compute next values
             with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-                next_values_1, _, _ = self.value1.act({"states": self._state_preprocessor(next_states1)}, role="value")
-                next_values_1 = self._value_preprocessor(next_values_1, inverse=True)
+                next_values_1, _, _ = self.value1.act({"states": next_states1}, role="value")
+                next_values_1 = self._value_preprocessor_1(next_values_1, inverse=True)
                 next_values_1 *= terminated.view(-1, 1).logical_not()
 
-                next_values_2, _, _ = self.value2.act({"states": self._state_preprocessor(next_states2)}, role="value")
-                next_values_2 = self._value_preprocessor(next_values_2, inverse=True)
+                next_values_2, _, _ = self.value2.act({"states": next_states2}, role="value")
+                next_values_2 = self._value_preprocessor_2(next_values_2, inverse=True)
                 next_values_2 *= terminated.view(-1, 1).logical_not()
 
                 next_values = torch.cat([next_values_1, next_values_2], dim=-1)
 
-            #todo reward is reshaped somewhere between env and agent
-            rewards = rewards.view(self.memory.num_envs, -1)
             # print(states.shape,
             #       actions.shape,
             #       rewards.shape,
@@ -451,7 +443,7 @@ class AMP(Agent):
                     terminated=terminated,
                     truncated=truncated,
                     log_prob=self._current_log_prob,
-                    values=values1,
+                    values=values,
                     amp_states=amp_states,
                     next_values=next_values,
                 )
@@ -546,32 +538,19 @@ class AMP(Agent):
         rewards = self.memory.get_tensor_by_name("rewards")
         amp_states = self.memory.get_tensor_by_name("amp_states")
 
-        rewards_1, rewards_2 = torch.chunk(rewards, 2, dim=-1)
-        amp_states_1, amp_states_2 = torch.chunk(amp_states, 2, dim=-1)
-
         with torch.no_grad(), torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-            amp_logits_1, _, _ = self.discriminator.act(
-                {"states": self._amp_state_preprocessor(amp_states_1)}, role="discriminator"
-            )
-            amp_logits_2, _, _ = self.discriminator.act(
-                {"states": self._amp_state_preprocessor(amp_states_2)}, role="discriminator"
+            amp_logits, _, _ = self.discriminator.act(
+                {"states": self._amp_state_preprocessor(amp_states)}, role="discriminator"
             )
 
-            style_reward_1 = -torch.log(
-                torch.maximum(1 - 1 / (1 + torch.exp(-amp_logits_1)), torch.tensor(0.0001, device=self.device))
-            )
-            style_reward_2 = -torch.log(
-                torch.maximum(1 - 1 / (1 + torch.exp(-amp_logits_2)), torch.tensor(0.0001, device=self.device))
+            style_rewards = -torch.log(
+                torch.maximum(1 - 1 / (1 + torch.exp(-amp_logits)), torch.tensor(0.0001, device=self.device))
             )
 
-            style_reward_1 *= self._discriminator_reward_scale
-            style_reward_1 = style_reward_1.view(rewards_1.shape)
-            style_reward_2 *= self._discriminator_reward_scale
-            style_reward_2 = style_reward_2.view(rewards_2.shape)
-            style_reward = torch.cat([style_reward_1, style_reward_2], dim=-1)
+            style_rewards *= self._discriminator_reward_scale
+            style_rewards = style_rewards.view(rewards.shape)
 
-        combined_rewards_1 = self._task_reward_weight * rewards_1 + self._style_reward_weight * style_reward_1
-        combined_rewards_2 = self._task_reward_weight * rewards_2 + self._style_reward_weight * style_reward_2
+        combined_rewards = self._task_reward_weight * rewards + self._style_reward_weight * style_rewards
 
         # compute returns and advantages
         values = self.memory.get_tensor_by_name("values")
@@ -580,27 +559,37 @@ class AMP(Agent):
         values1, values2 = torch.chunk(values, 2, dim=-1)
         next_values_1, next_values_2 = torch.chunk(next_values, 2, dim=-1)
 
-        returns_1, advantages_1 = compute_gae(
-            rewards=combined_rewards_1,
+        # using same rewards to compute different returns and advantages
+        returns1, advantages1 = compute_gae(
+            rewards=combined_rewards,
             dones=self.memory.get_tensor_by_name("terminated") | self.memory.get_tensor_by_name("truncated"),
             values=values1,
             next_values=next_values_1,
             discount_factor=self._discount_factor,
             lambda_coefficient=self._lambda,
         )
-        returns_2, advantages_2 = compute_gae(
-            rewards=combined_rewards_2,
+        returns2, advantages2 = compute_gae(
+            rewards=combined_rewards,
             dones=self.memory.get_tensor_by_name("terminated") | self.memory.get_tensor_by_name("truncated"),
             values=values2,
             next_values=next_values_2,
             discount_factor=self._discount_factor,
             lambda_coefficient=self._lambda,
         )
-        returns = torch.cat([returns_1, returns_2], dim=-1)
-        advantages = torch.cat([advantages_1, advantages_2], dim=-1)
 
-        self.memory.set_tensor_by_name("values", self._value_preprocessor(values, train=True))
-        self.memory.set_tensor_by_name("returns", self._value_preprocessor(returns, train=True))
+        values1 = self._value_preprocessor_1(values1, train=True)
+        values2 = self._value_preprocessor_2(values2, train=True)
+        values = torch.cat([values1, values2], dim=-1)
+
+        #todo why train preprocessor twice ?
+        returns1 = self._value_preprocessor_1(returns1, train=True)
+        returns2 = self._value_preprocessor_2(returns2, train=True)
+        returns = torch.cat([returns1, returns2], dim=-1)
+
+        advantages = torch.cat([advantages1, advantages2], dim=-1)
+
+        self.memory.set_tensor_by_name("values", values)
+        self.memory.set_tensor_by_name("returns", returns) 
         self.memory.set_tensor_by_name("advantages", advantages)
 
         # sample mini-batches from memory
@@ -617,12 +606,15 @@ class AMP(Agent):
         else:
             sampled_replay_batches = [[batches[self.tensors_names.index("amp_states")]] for batches in sampled_batches]
 
+
         cumulative_policy_loss_1 = 0
         cumulative_entropy_loss_1 = 0
         cumulative_value_loss_1 = 0
+
         cumulative_policy_loss_2 = 0
         cumulative_entropy_loss_2 = 0
         cumulative_value_loss_2 = 0
+
         cumulative_discriminator_loss = 0
 
         # learning epochs
@@ -647,15 +639,12 @@ class AMP(Agent):
 
                 with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
 
-                    sampled_states_1, sampled_states_2 = torch.chunk(sampled_states, 2, dim=-1)
+                    sampled_states_1, sampled_states_2 = torch.chunk(self._state_preprocessor(sampled_states, train=True), 2, dim=-1)
                     sampled_actions_1, sampled_actions_2 = torch.chunk(sampled_actions, 2, dim=-1)
                     sampled_log_prob_1, sampled_log_prob_2 = torch.chunk(sampled_log_prob, 2, dim=-1)
                     sampled_advantages_1, sampled_advantages_2 = torch.chunk(sampled_advantages, 2, dim=-1)
                     sampled_values_1, sampled_values_2 = torch.chunk(sampled_values, 2, dim=-1)
                     sampled_returns_1, sampled_returns_2 = torch.chunk(sampled_returns, 2, dim=-1)
-
-                    sampled_states_1 = self._state_preprocessor(sampled_states_1, train=True)
-                    sampled_states_2 = self._state_preprocessor(sampled_states_2, train=True)
 
                     _, next_log_prob_1, _ = self.policy1.act(
                         {"states": sampled_states_1, "taken_actions": sampled_actions_1}, role="policy"
@@ -708,67 +697,49 @@ class AMP(Agent):
                         predicted_values_2 = sampled_values_2 + torch.clip(
                             predicted_values_2 - sampled_values_2, min=-self._value_clip, max=self._value_clip
                         )
-                    predicted_values = torch.cat([predicted_values_1, predicted_values_2], dim=-1)
+
                     value_loss_1 = self._value_loss_scale * F.mse_loss(sampled_returns_1, predicted_values_1)
                     value_loss_2 = self._value_loss_scale * F.mse_loss(sampled_returns_2, predicted_values_2)
 
                     # compute discriminator loss
                     if self._discriminator_batch_size:
-                        # current states from current policy
-                        sampled_amp_states = sampled_amp_states[0 : self._discriminator_batch_size]
-                        # history states from replay buffer
-                        sampled_amp_replay_states = sampled_replay_batches[batch_index][0][0 : self._discriminator_batch_size]
-                        # ground truth states from motion dataset
-                        sampled_amp_motion_states = sampled_motion_batches[batch_index][0][0 : self._discriminator_batch_size]
+                        sampled_amp_states = sampled_amp_states[0 : self._discriminator_batch_size] # current states from current policy
+                        sampled_amp_replay_states = sampled_replay_batches[batch_index][0][0 : self._discriminator_batch_size] # history states from replay buffer
+                        sampled_amp_motion_states = sampled_motion_batches[batch_index][0][0 : self._discriminator_batch_size] # ground truth states from motion dataset
                     else:
                         sampled_amp_states = sampled_amp_states
                         sampled_amp_replay_states = sampled_replay_batches[batch_index][0]
                         sampled_amp_motion_states = sampled_motion_batches[batch_index][0]
                     
-                    sampled_amp_states_1, sampled_amp_states_2 = torch.chunk(sampled_amp_states, 2, dim=-1)
-                    sampled_amp_replay_states_1, sampled_amp_replay_states_2 = torch.chunk(sampled_amp_replay_states, 2, dim=-1)
 
-                    sampled_amp_states_1 = self._amp_state_preprocessor(sampled_amp_states_1, train=True)
-                    sampled_amp_states_2 = self._amp_state_preprocessor(sampled_amp_states_2, train=True)
-                    sampled_amp_replay_states_1 = self._amp_state_preprocessor(sampled_amp_replay_states_1, train=True)
-                    sampled_amp_replay_states_2 = self._amp_state_preprocessor(sampled_amp_replay_states_2, train=True)
+                    sampled_amp_states = self._amp_state_preprocessor(sampled_amp_states, train=True)
+                    sampled_amp_replay_states = self._amp_state_preprocessor(sampled_amp_replay_states, train=True)
 
                     sampled_amp_motion_states.requires_grad_(True)
 
                     # observed state distribution
-                    amp_logits_1, _, _ = self.discriminator.act({"states": sampled_amp_states_1}, role="discriminator")
-                    amp_replay_logits_1, _, _ = self.discriminator.act(
-                        {"states": sampled_amp_replay_states_1}, role="discriminator"
-                    )
-                    amp_logits_2, _, _ = self.discriminator.act({"states": sampled_amp_states_2}, role="discriminator")
-                    amp_replay_logits_2, _, _ = self.discriminator.act(
-                        {"states": sampled_amp_replay_states_2}, role="discriminator"
+                    amp_logits, _, _ = self.discriminator.act(
+                        {"states": sampled_amp_states}, role="discriminator")
+                    amp_replay_logits, _, _ = self.discriminator.act(
+                        {"states": sampled_amp_replay_states}, role="discriminator"
                     )
                     # ground truth state distribution
                     amp_motion_logits, _, _ = self.discriminator.act(
                         {"states": sampled_amp_motion_states}, role="discriminator"
                     )
 
-                    amp_cat_logits_1 = torch.cat([amp_logits_1, amp_replay_logits_1], dim=0)
-                    amp_cat_logits_2 = torch.cat([amp_logits_2, amp_replay_logits_2], dim=0)
+                    amp_cat_logits = torch.cat([amp_logits, amp_replay_logits], dim=0)
 
                     # discriminator prediction loss
-                    discriminator_loss_1 = 0.5 * (
-                        nn.BCEWithLogitsLoss()(amp_cat_logits_1, torch.zeros_like(amp_cat_logits_1))
-                        + torch.nn.BCEWithLogitsLoss()(amp_motion_logits, torch.ones_like(amp_motion_logits))
-                    )
-                    discriminator_loss_2 = 0.5 * (
-                        nn.BCEWithLogitsLoss()(amp_cat_logits_2, torch.zeros_like(amp_cat_logits_2))
+                    discriminator_loss = 0.5 * (
+                        nn.BCEWithLogitsLoss()(amp_cat_logits, torch.zeros_like(amp_cat_logits))
                         + torch.nn.BCEWithLogitsLoss()(amp_motion_logits, torch.ones_like(amp_motion_logits))
                     )
 
                     # discriminator logit regularization
                     if self._discriminator_logit_regularization_scale:
                         logit_weights = torch.flatten(list(self.discriminator.modules())[-1].weight)
-                        discriminator_loss_1 += self._discriminator_logit_regularization_scale * torch.sum(
-                            torch.square(logit_weights)
-                        )
-                        discriminator_loss_2 += self._discriminator_logit_regularization_scale * torch.sum(
+                        discriminator_loss += self._discriminator_logit_regularization_scale * torch.sum(
                             torch.square(logit_weights)
                         )
 
@@ -783,10 +754,7 @@ class AMP(Agent):
                             only_inputs=True,
                         )
                         gradient_penalty = torch.sum(torch.square(amp_motion_gradient[0]), dim=-1).mean()
-                        discriminator_loss_1 += self._discriminator_gradient_penalty_scale * gradient_penalty
-                        discriminator_loss_2 += self._discriminator_gradient_penalty_scale * gradient_penalty
-                    
-                    discriminator_loss = discriminator_loss_1 + discriminator_loss_2
+                        discriminator_loss += self._discriminator_gradient_penalty_scale * gradient_penalty
 
                     # discriminator weight decay
                     if self._discriminator_weight_decay_scale:

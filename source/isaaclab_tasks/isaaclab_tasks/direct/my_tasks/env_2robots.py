@@ -139,7 +139,7 @@ class Env2Robots(DirectRLEnv):
     #todo adapt to two robots
     def _get_rewards(self) -> torch.Tensor:
         if self.cfg.reward == "ones":
-            return self.reward_ones().unsqueeze(1).repeat(1, 2)
+            return self.reward_ones() #.unsqueeze(1).repeat(1, 2)
         elif self.cfg.reward == "stand_forward":
             return self.reward_stand_forward()
         elif self.cfg.reward == "imitation":
@@ -240,7 +240,7 @@ class Env2Robots(DirectRLEnv):
             self.amp_observation_buffer[:, i + 1] = self.amp_observation_buffer[:, i]
         # build AMP observation (push in)
         obs = torch.cat([obs_1, obs_2], dim=-1)
-        self.amp_observation_buffer[:, 0] = obs.clone()
+        self.amp_observation_buffer[:, 0] = obs.clone() # buffer: [num_envs, num_amp_observations, amp_observation_space]
         self.extras = {"amp_obs": self.amp_observation_buffer.view(-1, self.amp_observation_size)}
 
         return {"policy": obs}
@@ -289,40 +289,79 @@ class Env2Robots(DirectRLEnv):
 
     # Collect ground truth observations, used in agent
     def collect_reference_motions(self, num_samples: int, current_times: np.ndarray | None = None, motion_loader: MotionLoader | None=None) -> torch.Tensor:
-        # if motion loader is None, randomly select one 
-        if motion_loader is None:
-            motion_loader = self._motion_loader_1 if np.random.rand() < 0.5 else self._motion_loader_2
-
         # sample random motion times (or use the one specified)
         if current_times is None:
-            current_times = motion_loader.sample_times(num_samples)
+            current_times = self._motion_loader_1.sample_times(num_samples)
         times = (
             np.expand_dims(current_times, axis=-1)
-            - motion_loader.dt * np.arange(0, self.cfg.num_amp_observations)
+            - self._motion_loader_1.dt * np.arange(0, self.cfg.num_amp_observations)
         ).flatten()
 
-        # get motions
-        (
-            dof_positions,
-            dof_velocities,
-            body_positions,
-            body_rotations,
-            root_linear_velocity,
-            root_angular_velocity,
-        ) = motion_loader.sample(num_samples=num_samples, times=times)
-        
-        # self.extras["text"] = #todo pass sampled motion text description to env.infos
-        
-        # compute AMP observation
-        amp_observation = compute_obs(
-            dof_positions[:, self.motion_dof_indexes],
-            dof_velocities[:, self.motion_dof_indexes],
-            body_positions[:, self.motion_ref_body_index],
-            body_rotations[:, self.motion_ref_body_index],
-            root_linear_velocity,
-            root_angular_velocity,
-        )
-        return amp_observation.view(-1, int(self.amp_observation_size/2)) # (num_envs, state transitions)
+        if motion_loader:
+            # get motions
+            (
+                dof_positions,
+                dof_velocities,
+                body_positions,
+                body_rotations,
+                root_linear_velocity,
+                root_angular_velocity,
+            ) = motion_loader.sample(num_samples=num_samples, times=times)
+            
+            # compute AMP observation
+            amp_observation = compute_obs(
+                dof_positions[:, self.motion_dof_indexes],
+                dof_velocities[:, self.motion_dof_indexes],
+                body_positions[:, self.motion_ref_body_index],
+                body_rotations[:, self.motion_ref_body_index],
+                root_linear_velocity,
+                root_angular_velocity,
+            ).view(-1, int(self.amp_observation_size/2))
+
+            return amp_observation # (num_envs, state transitions)
+
+        else:
+            motion_loader = self._motion_loader_1
+            # get motions
+            (
+                dof_positions,
+                dof_velocities,
+                body_positions,
+                body_rotations,
+                root_linear_velocity,
+                root_angular_velocity,
+            ) = motion_loader.sample(num_samples=num_samples, times=times)
+            # compute AMP observation
+            amp_observation_1 = compute_obs(
+                dof_positions[:, self.motion_dof_indexes],
+                dof_velocities[:, self.motion_dof_indexes],
+                body_positions[:, self.motion_ref_body_index],
+                body_rotations[:, self.motion_ref_body_index],
+                root_linear_velocity,
+                root_angular_velocity,
+            ).view(-1, int(self.amp_observation_size/2))
+
+            motion_loader = self._motion_loader_2
+            # get motions
+            (
+                dof_positions,
+                dof_velocities,
+                body_positions,
+                body_rotations,
+                root_linear_velocity,
+                root_angular_velocity,
+            ) = motion_loader.sample(num_samples=num_samples, times=times)
+            # compute AMP observation
+            amp_observation_2 = compute_obs(
+                dof_positions[:, self.motion_dof_indexes],
+                dof_velocities[:, self.motion_dof_indexes],
+                body_positions[:, self.motion_ref_body_index],
+                body_rotations[:, self.motion_ref_body_index],
+                root_linear_velocity,
+                root_angular_velocity,
+            ).view(-1, int(self.amp_observation_size/2))
+
+            return torch.cat([amp_observation_1, amp_observation_2], dim=-1)
     
     def reset_reference_buffer(self, motion_loader: MotionLoader, ref_state_buffer: dict, env_ids: torch.Tensor | None=None):
         env_ids = self.robot1._ALL_INDICES if env_ids is None else env_ids
