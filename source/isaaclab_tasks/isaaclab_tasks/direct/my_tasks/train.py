@@ -48,7 +48,7 @@ env = wrap_env(env)
 
 # agent configuration
 from agents.amp_2robots import AMP, AMP_DEFAULT_CONFIG
-from agents.moe import MOE
+from agents.moe import MOE, MOE_DEFAULT_CONFIG
 from agents.ppo import PPO, PPO_DEFAULT_CONFIG
 from models.amp import *
 from models.moe import *
@@ -138,6 +138,43 @@ elif "PPO" in args.task:
     
     models = instantiate_PPO(env, params=args.params, device=device)
     agent = PPO(models=models,
+                memory=rollout_memory,  
+                cfg=agent_cfg,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                device=device)
+    
+elif "MOE" in args.task:
+    agent_cfg = MOE_DEFAULT_CONFIG.copy()
+    rollout_memory = RandomMemory(
+        memory_size=agent_cfg["rollouts"], 
+        num_envs=env.num_envs, 
+        device=device  
+    )
+    
+    # custom configurations
+    agent_cfg["gating_size"] = 32
+    agent_cfg["num_experts"] = 5
+    agent_cfg["gatings_size"] = agent_cfg["num_experts"] * agent_cfg["gating_size"]
+    agent_cfg["sub_action_size"] = {"Pivot": 15, "LeftArm": 15, "RightArm": 15, "LeftLimb": 12, "RightLimb": 12}
+    agent_cfg["moe_batch_size"] = 32
+
+    if args.lr: agent_cfg["learning_rate"] = args.lr
+    agent_cfg["experiment"] = {
+        "directory": os.path.join("logs", args.task), 
+        "experiment_name": args.name, 
+        "write_interval": 100,   
+        "checkpoint_interval": "auto",  
+        "wandb": args.wandb,      
+        "wandb_kwargs": {
+            "entity": "xiaotang-zhang",
+            "project": "IsaacLab",
+            "name": experiment_name,
+        }
+    }
+    
+    models = instantiate_MOE(env, params=args.params, cfg=agent_cfg, device=device)
+    agent = MOE(models=models,
                 memory=rollout_memory,  
                 cfg=agent_cfg,
                 observation_space=env.observation_space,
