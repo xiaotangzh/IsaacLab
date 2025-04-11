@@ -38,7 +38,7 @@ class EnvCfg(DirectRLEnvCfg):
     early_termination = True
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
-    action_clip = [-0.2, 0.2]
+    action_clip = [-0.1, 0.1]
     
     # reward
     reward: list = []
