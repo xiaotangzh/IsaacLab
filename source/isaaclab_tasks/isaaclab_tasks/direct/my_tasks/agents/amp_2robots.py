@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from skrl import config, logger
-from .agent import Agent
+from .base_agent import BaseAgent
 from skrl.memories.torch import Memory
 from skrl.models.torch import Model
 from skrl.resources.schedulers.torch import KLAdaptiveLR
@@ -80,7 +80,7 @@ AMP_DEFAULT_CONFIG = {
 # fmt: on
 
 
-class AMP(Agent):
+class AMP(BaseAgent):
     def __init__(
         self,
         models: Mapping[str, Model],

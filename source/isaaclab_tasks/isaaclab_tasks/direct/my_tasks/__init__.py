@@ -17,20 +17,20 @@ from . import agents
 
 gym.register(
     id="AMP-InterHuman",
-    entry_point=f"{__name__}.env_1robot:Env1Robot",
+    entry_point=f"{__name__}.env:Env",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.env_1robot_cfg:AmpInterHumanEnvCfg",
+        "env_cfg_entry_point": f"{__name__}.env_cfg:AmpInterHumanEnvCfg",
         "skrl_amp_cfg_entry_point": f"{agents.__name__}:skrl_amp_interhuman_cfg.yaml",
     },
 )
 
 gym.register(
     id="PPO",
-    entry_point=f"{__name__}.env_1robot:Env1Robot",
+    entry_point=f"{__name__}.env:Env",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.env_1robot_cfg:PPOEnvCfg",
+        "env_cfg_entry_point": f"{__name__}.env_cfg:PPOEnvCfg",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )
@@ -38,20 +38,10 @@ gym.register(
 ## Two Robots registrationo
 gym.register(
     id="AMP-InterHuman-2Robots",
-    entry_point=f"{__name__}.env_2robots:Env2Robots",
+    entry_point=f"{__name__}.env:Env",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.env_2robots_cfg:AmpInterHumanEnvCfg",
-        "skrl_amp_cfg_entry_point": f"{agents.__name__}:skrl_amp_interhuman_cfg.yaml",
-    },
-)
-
-gym.register(
-    id="PPO-InterHuman-2Robots",
-    entry_point=f"{__name__}.env_2robots:Env2Robots",
-    disable_env_checker=True,
-    kwargs={
-        "env_cfg_entry_point": f"{__name__}.env_2robots_cfg:PPOInterHumanEnvCfg",
+        "env_cfg_entry_point": f"{__name__}.env_cfg:AmpInterHumanEnvCfg2Robots",
         "skrl_amp_cfg_entry_point": f"{agents.__name__}:skrl_amp_interhuman_cfg.yaml",
     },
 )

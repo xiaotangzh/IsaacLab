@@ -21,35 +21,35 @@ MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions"
 
 
 @configclass
-class Env2RobotsCfg(DirectRLEnvCfg):
+class EnvCfg(DirectRLEnvCfg):
     """Humanoid AMP environment config (base class)."""
 
     # env
     episode_length_s = 30.0 # 10s * 30fps = 300 frames
     decimation = 2
 
-    # spaces
-    num_persons = 2
-    observation_space = 151 * num_persons
-    action_space = 69 * num_persons
-    state_space = 0
-    num_amp_observations = 2
-    amp_observation_space = observation_space
+    # num_persons = 2
+    # observation_space = 151 * num_persons
+    # action_space = 69 * num_persons
+    # state_space = 0
+    # num_amp_observations = 2
+    # amp_observation_space = observation_space
 
     early_termination = True
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
-    action_clip = [None, None] #[-0.1, 0.1]
+    action_clip = [-0.2, 0.2]
     
     # reward
-    reward = "ones"
+    reward: list = []
     
     # motions
-    motion_file_1: str = MISSING
-    motion_file_2: str = MISSING
+    # motion_file_1: str = MISSING
+    # motion_file_2: str = MISSING
     reference_body = "Pelvis"
     sync_motion = False # apply reference actions instead of predicted actions to robots
     reset_strategy = "random"  # default, random, random-start
+    
     """Strategy to be followed when resetting each environment (humanoid's pose and joint states).
 
     * default: pose and joint states are set to the initial state of the asset.
@@ -71,16 +71,56 @@ class Env2RobotsCfg(DirectRLEnvCfg):
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=16, env_spacing=5.0, replicate_physics=True)
 
     # robot
+    # robot1: ArticulationCfg = MISSING 
+    # robot2: ArticulationCfg = MISSING 
+
+class EnvCfg1Robot(EnvCfg):
+    num_persons = 1
+    observation_space = 151 * num_persons
+    action_space = 69 * num_persons
+    state_space = 0
+    num_amp_observations = 2
+    amp_observation_space = observation_space
+
+    # robot
+    robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
+
+    motion_file_1: str = MISSING
+
+class EnvCfg2Robots(EnvCfg):
+    num_persons = 2
+    observation_space = 151 * num_persons
+    action_space = 69 * num_persons
+    state_space = 0
+    num_amp_observations = 2
+    amp_observation_space = observation_space
+
+    # robot
     robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
     robot2: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot2")
 
+    motion_file_1: str = MISSING
+    motion_file_2: str = MISSING
+
 @configclass
-class AmpInterHumanEnvCfg(Env2RobotsCfg):
+class AmpInterHumanEnvCfg2Robots(EnvCfg2Robots):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
     motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/26_2.npz")
+    # robot1 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
+    # robot2 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot2")
+
+    reward = ["ones"]
+
+@configclass
+class AmpInterHumanEnvCfg(EnvCfg1Robot):
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
+    robot1 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
+
+    reward = ["ones"]
     
 @configclass
-class PPOInterHumanEnvCfg(Env2RobotsCfg):
+class PPOEnvCfg(EnvCfg1Robot):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
-    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/26_2.npz")
-    
+    robot1 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
+
+    reward = ["stand", "min_vel"]

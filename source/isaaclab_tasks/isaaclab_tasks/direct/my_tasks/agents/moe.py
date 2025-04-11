@@ -10,7 +10,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from skrl import config, logger
-from .agent import Agent
+from .base_agent import BaseAgent
 from skrl.memories.torch import Memory
 from skrl.models.torch import Model
 from skrl.resources.schedulers.torch import KLAdaptiveLR
@@ -69,7 +69,7 @@ MOE_DEFAULT_CONFIG = {
 # fmt: on
 
 
-class MOE(Agent):
+class MOE(BaseAgent):
     def __init__(
         self,
         models: Mapping[str, Model],
@@ -113,13 +113,14 @@ class MOE(Agent):
         )
 
         # models
-        self.policy = self.models.get("policy", None)
-        self.value = self.models.get("value", None)
+        self.gating = self.models.get("policy", None)
+        self.value_gating = self.models.get("value_gating", None)
+        self.value_experts = self.models.get("value_experts", None)
         self.experts = nn.ModuleDict(self.models.get("experts", None))
 
-        # checkpoint models
-        self.checkpoint_modules["policy"] = self.policy
-        self.checkpoint_modules["value"] = self.value
+        # checkpoint models #todo
+        self.checkpoint_modules["policy"] = self.gating
+        self.checkpoint_modules["value"] = self.value_gating
         self.checkpoint_modules["experts"] = self.experts
 
         # configuration
@@ -142,7 +143,8 @@ class MOE(Agent):
         self._learning_rate_scheduler = self.cfg["learning_rate_scheduler"]
 
         self._state_preprocessor = self.cfg["state_preprocessor"]
-        self._value_preprocessor = self.cfg["value_preprocessor"]
+        self._experts_value_preprocessor = self.cfg["experts_value_preprocessor"]
+        self._gating_value_preprocessor = self.cfg["gating_value_preprocessor"]
 
         self._discount_factor = self.cfg["discount_factor"]
         self._lambda = self.cfg["lambda"]
@@ -173,9 +175,9 @@ class MOE(Agent):
             self.scaler_moe = torch.cuda.amp.GradScaler(enabled=self._mixed_precision)
 
         # set up optimizer and learning rate scheduler
-        if self.policy and self.value and self.experts:
+        if self.gating and self.value_gating and self.experts:
             self.optimizer = torch.optim.Adam(
-                itertools.chain(self.policy.parameters(), self.value.parameters()), lr=self._learning_rate
+                itertools.chain(self.gating.parameters(), self.value_gating.parameters()), lr=self._learning_rate
             )
             self.optimizer_moe = torch.optim.Adam(
                 self.experts.parameters(), lr=self._learning_rate
@@ -198,11 +200,14 @@ class MOE(Agent):
         else:
             self._state_preprocessor = self._empty_preprocessor
 
-        if self._value_preprocessor:
-            self._value_preprocessor = self._value_preprocessor(**self.cfg["value_preprocessor_kwargs"])
-            self.checkpoint_modules["value_preprocessor"] = self._value_preprocessor
+        if self._experts_value_preprocessor and self._gating_value_preprocessor:
+            self._experts_value_preprocessor = self._experts_value_preprocessor(**self.cfg["value_preprocessor_kwargs"])
+            self._gating_value_preprocessor = self._gating_value_preprocessor(**self.cfg["value_preprocessor_kwargs"])
+            self.checkpoint_modules["experts_value_preprocessor"] = self._experts_value_preprocessor
+            self.checkpoint_modules["gating_value_preprocessor"] = self._gating_value_preprocessor
         else:
-            self._value_preprocessor = self._empty_preprocessor
+            self._experts_value_preprocessor = self._empty_preprocessor
+            self._gating_value_preprocessor = self._empty_preprocessor
 
     def init(self, trainer_cfg: Optional[Mapping[str, Any]] = None) -> None:
         """Initialize the agent"""
@@ -213,21 +218,28 @@ class MOE(Agent):
         if self.memory is not None:
             self.memory.create_tensor(name="states", size=self.observation_space, dtype=torch.float32)
             self.memory.create_tensor(name="actions", size=self.action_space, dtype=torch.float32)
-            self.memory.create_tensor(name="rewards", size=1, dtype=torch.float32)
-            self.memory.create_tensor(name="moe_loss", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="high_rewards", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="low_rewards", size=1, dtype=torch.float32)
             self.memory.create_tensor(name="terminated", size=1, dtype=torch.bool)
             self.memory.create_tensor(name="truncated", size=1, dtype=torch.bool)
-            self.memory.create_tensor(name="log_prob", size=1, dtype=torch.float32)
-            self.memory.create_tensor(name="values", size=1, dtype=torch.float32)
-            self.memory.create_tensor(name="returns", size=1, dtype=torch.float32)
-            self.memory.create_tensor(name="advantages", size=1, dtype=torch.float32)
+
+            self.memory.create_tensor(name="experts_log_prob", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="experts_values", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="experts_returns", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="experts_advantages", size=1, dtype=torch.float32)
+
+            self.memory.create_tensor(name="gating_log_prob", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="gating_values", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="gating_returns", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="gating_advantages", size=1, dtype=torch.float32)
 
             # tensors sampled during training
             self._tensors_names = ["states", "actions", "log_prob", "values", "returns", "advantages"]
 
         # create temporary variables needed for storage and computation
-        self._current_log_prob = None
-        self._current_next_states = None
+        self.gating_current_log_prob = None
+        self.experts_current_log_prob = None
+        # self._current_next_states = None
 
     def act(self, states: torch.Tensor, timestep: int, timesteps: int) -> torch.Tensor:
         """Process the environment's states to make a decision (actions) using the main policy
@@ -245,16 +257,19 @@ class MOE(Agent):
 
         # sample stochastic actions
         with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-            gatings, log_prob, outputs = self.policy.act({"states": self._state_preprocessor(states)}, role="policy")
-            self._current_log_prob = log_prob
+            gatings, gatings_log_prob, gating_outputs = self.gating.act({"goal": goal}, role="gating") # gatings: (num_envs, num_experts)
+            self.gating_current_log_prob = gatings_log_prob
 
-            # todo double check gradient propagation
-            gatings = gatings.detach().view(-1, self.num_experts, self.gating_size)
-            actions = [self.experts[self.expert_names[e]].act({"gating": gatings[e]}, role="expert") 
-             for e in range(self.num_experts)]
-            actions = torch.cat(actions, dim=-1)
-
-        return actions, log_prob, outputs
+            actions_logprobs = [self.experts[self.expert_names[e]].act({"states": self._state_preprocessor(states)}, role="expert") for e in range(self.num_experts)]
+            actions, experts_log_prob, experts_outputs = zip(*actions_logprobs)
+            actions = torch.cat(actions, dim=1) # (num_envs, num_experts, action)
+            actions = actions * gatings # (num_envs, weighted action)
+            # todo double check joint log prob
+            joint_experts_log_prob = torch.logsumexp(
+                torch.log(gatings) + experts_log_prob,  # log(g_i) + log(π_i)
+                dim=-1 
+            )
+        return actions, joint_experts_log_prob, experts_outputs
 
     def record_transition(
         self,
@@ -300,37 +315,46 @@ class MOE(Agent):
 
             # compute values
             with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-                values, _, _ = self.value.act({"states": self._state_preprocessor(states)}, role="value")
-                values = self._value_preprocessor(values, inverse=True)
+                gating_values, _, _ = self.value_gating.act({"goal": goal}, role="gating value")
+                gating_values = self._gating_value_preprocessor(gating_values, inverse=True)
+
+                experts_values, _, _ = self.value_experts.act({"states": states}, role="experts value")
+                experts_values = self._experts_value_preprocessor(experts_values, inverse=True)
 
             # IGNORED: time-limit (truncation) bootstrapping
 
             # get different rewards
-            task_rewards, moe_loss = rewards["task_rewards"], rewards["moe_rewards"]
+            high_rewards, low_rewards = rewards["high_rewards"], rewards["low_rewards"]
 
             # storage transition in memory
             self.memory.add_samples(
                 states=states,
                 actions=actions,
-                rewards=task_rewards,
-                moe_loss=moe_loss,
+                rewards=high_rewards,
+                low_rewards=low_rewards,
                 next_states=next_states,
                 terminated=terminated,
                 truncated=truncated,
-                log_prob=self._current_log_prob,
-                values=values,
+
+                experts_log_prob=self.experts_current_log_prob,
+                experts_values=experts_values,
+                gating_log_prob=self.gating_current_log_prob,
+                gating_values=gating_values
             )
             for memory in self.secondary_memories:
                 memory.add_samples(
                     states=states,
                     actions=actions,
-                    rewards=task_rewards,
-                    moe_loss=moe_loss,
+                    high_rewards=high_rewards,
+                    low_rewards=low_rewards,
                     next_states=next_states,
                     terminated=terminated,
                     truncated=truncated,
-                    log_prob=self._current_log_prob,
-                    values=values,
+
+                    experts_log_prob=self.experts_current_log_prob,
+                    experts_values=experts_values,
+                    gating_log_prob=self.gating_current_log_prob,
+                    gating_values=gating_values
                 )
 
     def pre_interaction(self, timestep: int, timesteps: int) -> None:
@@ -355,24 +379,11 @@ class MOE(Agent):
         if not self._rollout % self._rollouts and timestep >= self._learning_starts:
             self.set_mode("train")
             self._update(timestep, timesteps)
-            self.update_experts(timestep, timesteps)
             self.set_mode("eval")
     
         # write tracking data and checkpoints
         super().post_interaction(timestep, timesteps)
-    
-    def update_experts(self, timestep, timesteps) -> None:
-        moe_loss = self.memory.sample(name="moe_loss", batch_size=self.moe_batch_szie)
 
-        # optimization step
-        self.optimizer_moe.zero_grad()
-        self.scaler_moe.scale(moe_loss).backward()
-        self.scaler_moe.step(self.optimizer_moe)
-        self.scaler_moe.update()
-
-        # record data
-        if not timestep % self.write_interval and timestep >= self._learning_starts:
-            self.track_data("Loss / MoE loss", moe_loss.item())
             
     def _update(self, timestep: int, timesteps: int) -> None:
         """Algorithm's main update step
@@ -385,11 +396,11 @@ class MOE(Agent):
 
         # compute returns and advantages
         with torch.no_grad(), torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-            self.value.train(False)
-            last_values, _, _ = self.value.act(
+            self.value_gating.train(False)
+            last_values, _, _ = self.value_gating.act(
                 {"states": self._state_preprocessor(self._current_next_states.float())}, role="value"
             )
-            self.value.train(True)
+            self.value_gating.train(True)
             last_values = self._value_preprocessor(last_values, inverse=True)
 
         values = self.memory.get_tensor_by_name("values")
@@ -431,7 +442,7 @@ class MOE(Agent):
 
                     sampled_states = self._state_preprocessor(sampled_states, train=not epoch)
 
-                    _, next_log_prob, _ = self.policy.act(
+                    _, next_log_prob, _ = self.gating.act(
                         {"states": sampled_states, "taken_actions": sampled_actions}, role="policy"
                     )
 
@@ -447,7 +458,7 @@ class MOE(Agent):
 
                     # compute entropy loss
                     if self._entropy_loss_scale:
-                        entropy_loss = -self._entropy_loss_scale * self.policy.get_entropy(role="policy").mean()
+                        entropy_loss = -self._entropy_loss_scale * self.gating.get_entropy(role="policy").mean()
                     else:
                         entropy_loss = 0
 
@@ -461,7 +472,7 @@ class MOE(Agent):
                     policy_loss = -torch.min(surrogate, surrogate_clipped).mean()
 
                     # compute value loss
-                    predicted_values, _, _ = self.value.act({"states": sampled_states}, role="value")
+                    predicted_values, _, _ = self.value_gating.act({"states": sampled_states}, role="value")
 
                     if self._clip_predicted_values:
                         predicted_values = sampled_values + torch.clip(
@@ -476,7 +487,7 @@ class MOE(Agent):
                 if self._grad_norm_clip > 0:
                     self.scaler.unscale_(self.optimizer)
                     nn.utils.clip_grad_norm_(
-                        itertools.chain(self.policy.parameters(), self.value.parameters()), self._grad_norm_clip
+                        itertools.chain(self.gating.parameters(), self.value_gating.parameters()), self._grad_norm_clip
                     )
 
                 self.scaler.step(self.optimizer)
@@ -508,7 +519,7 @@ class MOE(Agent):
                 "Loss / Entropy loss", cumulative_entropy_loss / (self._learning_epochs * self._mini_batches)
             )
 
-        self.track_data("Policy / Standard deviation", self.policy.distribution(role="policy").stddev.mean().item())
+        self.track_data("Policy / Standard deviation", self.gating.distribution(role="policy").stddev.mean().item())
 
         if self._learning_rate_scheduler:
             self.track_data("Learning / Learning rate", self.scheduler.get_last_lr()[0])

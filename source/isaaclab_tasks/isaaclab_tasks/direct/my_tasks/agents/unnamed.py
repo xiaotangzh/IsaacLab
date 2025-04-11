@@ -18,7 +18,7 @@ from skrl.resources.schedulers.torch import KLAdaptiveLR
 
 # fmt: off
 # [start-config-dict-torch]
-PPO_DEFAULT_CONFIG = {
+UNNAMED_DEFAULT_CONFIG = {
     "rollouts": 16,                 # number of rollouts before updating
     "learning_epochs": 8,           # number of learning epochs during each update
     "mini_batches": 2,              # number of mini batches during each learning epoch
@@ -69,7 +69,7 @@ PPO_DEFAULT_CONFIG = {
 # fmt: on
 
 
-class PPO(BaseAgent):
+class Unnamed(BaseAgent):
     def __init__(
         self,
         models: Mapping[str, Model],
@@ -101,7 +101,7 @@ class PPO(BaseAgent):
 
         :raises KeyError: If the models dictionary is missing a required key
         """
-        _cfg = copy.deepcopy(PPO_DEFAULT_CONFIG)
+        _cfg = copy.deepcopy(UNNAMED_DEFAULT_CONFIG)
         _cfg.update(cfg if cfg is not None else {})
         super().__init__(
             models=models,
@@ -196,6 +196,10 @@ class PPO(BaseAgent):
         else:
             self._value_preprocessor = self._empty_preprocessor
 
+        # custom variables
+        self.latent_size = self.cfg["latent_size"]
+        self.latents = torch.zeros([self.memory.num_envs, self.latent_size], device=self.device)
+
     def init(self, trainer_cfg: Optional[Mapping[str, Any]] = None) -> None:
         """Initialize the agent"""
         super().init(trainer_cfg=trainer_cfg)
@@ -204,6 +208,7 @@ class PPO(BaseAgent):
         # create tensors in memory
         if self.memory is not None:
             self.memory.create_tensor(name="states", size=self.observation_space, dtype=torch.float32)
+            self.memory.create_tensor(name="latents", size=self.latent_size, dtype=torch.float32)
             self.memory.create_tensor(name="actions", size=self.action_space, dtype=torch.float32)
             self.memory.create_tensor(name="rewards", size=1, dtype=torch.float32)
             self.memory.create_tensor(name="terminated", size=1, dtype=torch.bool)
@@ -214,7 +219,7 @@ class PPO(BaseAgent):
             self.memory.create_tensor(name="advantages", size=1, dtype=torch.float32)
 
             # tensors sampled during training
-            self._tensors_names = ["states", "actions", "log_prob", "values", "returns", "advantages"]
+            self._tensors_names = ["states", "latents", "actions", "log_prob", "values", "returns", "advantages"]
 
         # create temporary variables needed for storage and computation
         self._current_log_prob = None
@@ -233,14 +238,12 @@ class PPO(BaseAgent):
         :return: Actions
         :rtype: torch.Tensor
         """
-        # sample random actions
-        # TODO, check for stochasticity
-        if timestep < self._random_timesteps:
-            return self.policy.random_act({"states": self._state_preprocessor(states)}, role="policy")
 
         # sample stochastic actions
         with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-            actions, log_prob, outputs = self.policy.act({"states": self._state_preprocessor(states)}, role="policy")
+            actions, log_prob, outputs = self.policy.act({"states": self._state_preprocessor(states), 
+                                                          "latents": self.latents}, 
+                                                          role="policy")
             self._current_log_prob = log_prob
 
         return actions, log_prob, outputs
@@ -291,7 +294,9 @@ class PPO(BaseAgent):
 
             # compute values
             with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-                values, _, _ = self.value.act({"states": self._state_preprocessor(states)}, role="value")
+                values, _, _ = self.value.act({"states": self._state_preprocessor(states),
+                                               "latents": self.latents
+                                               }, role="value")
                 values = self._value_preprocessor(values, inverse=True)
 
             # time-limit (truncation) bootstrapping
@@ -301,6 +306,7 @@ class PPO(BaseAgent):
             # storage transition in memory
             self.memory.add_samples(
                 states=states,
+                latents=self.latents,
                 actions=actions,
                 rewards=rewards,
                 next_states=next_states,
@@ -312,6 +318,7 @@ class PPO(BaseAgent):
             for memory in self.secondary_memories:
                 memory.add_samples(
                     states=states,
+                    latents=self.latents,
                     actions=actions,
                     rewards=rewards,
                     next_states=next_states,
@@ -321,6 +328,9 @@ class PPO(BaseAgent):
                     values=values,
                 )
 
+    def sample_latents(self, num) -> torch.Tensor:
+        return torch.randn([num, self.latent_size], device=self.device)
+
     def pre_interaction(self, timestep: int, timesteps: int) -> None:
         """Callback called before the interaction with the environment
 
@@ -329,7 +339,9 @@ class PPO(BaseAgent):
         :param timesteps: Number of timesteps
         :type timesteps: int
         """
-        pass
+        
+        if timestep == 0:
+            self.latents = self.sample_latents(self.memory.num_envs)
 
     def post_interaction(self, timestep: int, timesteps: int) -> None:
         """Callback called after the interaction with the environment
@@ -344,6 +356,11 @@ class PPO(BaseAgent):
             self.set_mode("train")
             self._update(timestep, timesteps)
             self.set_mode("eval")
+        
+        # reset latents after envs die
+        terminated = self.memory.get_tensor_by_name("terminated")[self.memory.memory_index] #todo double check index
+        died_num_envs = terminated.sum()
+        self.latents = self.sample_latents(died_num_envs)
 
         # write tracking data and checkpoints
         super().post_interaction(timestep, timesteps)
@@ -407,8 +424,10 @@ class PPO(BaseAgent):
         # compute returns and advantages
         with torch.no_grad(), torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
             self.value.train(False)
+            #todo double check latents used
             last_values, _, _ = self.value.act(
-                {"states": self._state_preprocessor(self._current_next_states.float())}, role="value"
+                {"states": self._state_preprocessor(self._current_next_states.float()),
+                 "latents": self.latents}, role="value"
             )
             self.value.train(True)
             last_values = self._value_preprocessor(last_values, inverse=True)
@@ -441,6 +460,7 @@ class PPO(BaseAgent):
             # mini-batches loop
             for (
                 sampled_states,
+                sampled_latents,
                 sampled_actions,
                 sampled_log_prob,
                 sampled_values,
@@ -453,7 +473,7 @@ class PPO(BaseAgent):
                     sampled_states = self._state_preprocessor(sampled_states, train=not epoch)
 
                     _, next_log_prob, _ = self.policy.act(
-                        {"states": sampled_states, "taken_actions": sampled_actions}, role="policy"
+                        {"states": sampled_states, "latents":sampled_latents, "taken_actions": sampled_actions}, role="policy"
                     )
 
                     # compute approximate KL divergence

@@ -16,7 +16,7 @@ from skrl.memories.torch import Memory
 from skrl.models.torch import Model
 import wandb
 
-class Agent:
+class BaseAgent:
     def __init__(
         self,
         models: Mapping[str, Model],
