@@ -48,7 +48,7 @@ class EnvCfg(DirectRLEnvCfg):
     # motion_file_2: str = MISSING
     reference_body = "Pelvis"
     sync_motion = False # apply reference actions instead of predicted actions to robots
-    reset_strategy = "random"  # default, random, random-start
+    reset_strategy: str = MISSING  # default, random, random-start
     
     """Strategy to be followed when resetting each environment (humanoid's pose and joint states).
 
@@ -110,6 +110,7 @@ class AmpInterHumanEnvCfg2Robots(EnvCfg2Robots):
     # robot2 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot2")
 
     reward = ["ones"]
+    reset_strategy = "random"
 
 @configclass
 class AmpInterHumanEnvCfg(EnvCfg1Robot):
@@ -117,6 +118,7 @@ class AmpInterHumanEnvCfg(EnvCfg1Robot):
     robot1 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
 
     reward = ["ones"]
+    reset_strategy = "random"
     
 @configclass
 class PPOEnvCfg(EnvCfg1Robot):
@@ -124,3 +126,4 @@ class PPOEnvCfg(EnvCfg1Robot):
     robot1 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
 
     reward = ["stand", "min_vel"]
+    reset_strategy = "default"
