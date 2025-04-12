@@ -65,6 +65,9 @@ class Env(DirectRLEnv):
         self.ref_state_buffer_2 = {}
         self.reset_reference_buffer(self._motion_loader_1, self.ref_state_buffer_1)
         if hasattr(self.cfg, "robot2"): self.reset_reference_buffer(self._motion_loader_2, self.ref_state_buffer_2)
+
+        # other properties
+        self.default_com = None
             
     def _setup_scene(self):
         self.robot1 = Articulation(self.cfg.robot1)
@@ -157,6 +160,8 @@ class Env(DirectRLEnv):
             rewards += self.reward_min_vel()
         if "stand" in self.cfg.reward:
             rewards += self.reward_stand()
+        if "com" in self.cfg.reward:
+            rewards += self.reward_com()
         
         return rewards
 
@@ -196,6 +201,10 @@ class Env(DirectRLEnv):
             self.robot2.write_root_link_pose_to_sim(root_state_2[:, :7], env_ids)
             self.robot2.write_root_com_velocity_to_sim(root_state_2[:, 7:], env_ids)
             self.robot2.write_joint_state_to_sim(joint_pos_2, joint_vel_2, None, env_ids)
+
+        # compute default center of mass
+        if self.default_com is None:
+            self.default_com = self.compute_whole_body_com(self.robot1)
         
     def _get_observations(self) -> dict:
         # build task observation
@@ -458,6 +467,25 @@ class Env(DirectRLEnv):
             reward = (reward + torch.clip(self.robot2.data.body_pos_w[:, self.ref_body_index, 2], min=0, max=self.robot2.data.default_root_state[0, 2].item())) / 2
         # print(f"stand reward: {torch.mean(reward)}")
         return reward
+    
+    def reward_com(self) -> torch.Tensor:
+        reward = 1 - torch.mean(torch.abs(self.compute_whole_body_com(self.robot1) - self.default_com))
+        if self.robot2:
+            reward2 = 1 - torch.mean(torch.abs(self.compute_whole_body_com(self.robot2) - self.default_com))
+            reward = (reward + reward2) / 2
+        print(f"center of mass reward: {torch.mean(reward)}")
+        return reward
+
+    def compute_whole_body_com(self, robot: Articulation) -> torch.Tensor:
+        body_masses = robot.data.default_mass.to(self.device)
+        
+        body_com_positions = robot.data.body_com_pos_w
+        
+        total_mass = body_masses.sum(dim=1, keepdim=True)  # [num_envs, 1]
+        weighted_positions = body_com_positions * body_masses.unsqueeze(-1)  # [num_envs, num_bodies, 3]
+        whole_body_com = weighted_positions.sum(dim=1) / total_mass  # [num_envs, 3]
+        
+        return whole_body_com
     
     def compute_stand_forward_reward(self, target_quat, robot) -> torch.Tensor:
         current_quat = robot.data.body_quat_w[:, self.ref_body_index]

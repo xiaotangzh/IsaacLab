@@ -125,5 +125,5 @@ class PPOEnvCfg(EnvCfg1Robot):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
     robot1 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
 
-    reward = ["stand", "min_vel"]
+    reward = ["com"]
     reset_strategy = "default"
