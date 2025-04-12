@@ -185,7 +185,9 @@ class Env(DirectRLEnv):
             self.compute_coms()
             rewards += self.reward_com_acc()
         
-        if torch.any(check_nan(rewards)): rewards = torch.zeros([self.num_envs], device=self.device)
+        if torch.any(check_nan(rewards)): 
+            print("NaN detected in rewards")
+            rewards = torch.zeros([self.num_envs], device=self.device)
         return rewards
 
     def _reset_idx(self, env_ids: torch.Tensor | None): # env_ids: the ids of envs needed to be reset
@@ -265,7 +267,6 @@ class Env(DirectRLEnv):
             nan_envs = nan_envs_1
         
         if torch.any(nan_envs):
-            self.action_clip = [-0.01, 0.01]
             nan_env_ids = torch.nonzero(nan_envs, as_tuple=False).flatten()
             print(f"Warning: NaN detected in envs {nan_env_ids.tolist()}, resetting these envs.")
             self._reset_idx(nan_env_ids)
@@ -289,7 +290,6 @@ class Env(DirectRLEnv):
                         self.robot2.data.body_lin_vel_w[nan_env_ids, self.ref_body_index],
                         self.robot2.data.body_ang_vel_w[nan_env_ids, self.ref_body_index],
                     )
-        else: self.action_clip = self.cfg.action_clip
         # end detect NaN
 
         # update AMP observation history (pop out)
@@ -503,7 +503,7 @@ class Env(DirectRLEnv):
     
     def reward_com_acc(self, decay: float=0.01) -> torch.Tensor:
         reward = torch.clip(torch.exp(-decay * torch.mean(torch.abs(self.com_acc_robot1))), min=0.0, max=1.0)
-        print(f"center of mass acc reward: {reward}")
+        # print(f"center of mass acc reward: {reward}")
         return reward
     
     # def compute_coms(self):
