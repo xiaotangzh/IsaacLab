@@ -134,8 +134,8 @@ class EnvCfg2Robots(EnvCfg):
 
 @configclass
 class AmpInterHumanEnvCfg2Robots(EnvCfg2Robots):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
-    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/26_2.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
+    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/1_2.npz")
     # robot1 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
     # robot2 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot2")
 
