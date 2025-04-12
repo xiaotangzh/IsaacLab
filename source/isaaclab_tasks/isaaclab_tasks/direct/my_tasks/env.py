@@ -18,6 +18,9 @@ from isaaclab.utils.math import quat_rotate
 from .env_cfg import EnvCfg
 from .motions.motion_loader import MotionLoader
 import sys
+# marker
+from isaaclab.markers import VisualizationMarkersCfg, VisualizationMarkers
+import isaaclab.sim as sim_utils
 
 class Env(DirectRLEnv):
     cfg: EnvCfg
@@ -68,6 +71,14 @@ class Env(DirectRLEnv):
 
         # other properties
         self.default_com = None
+        self.com_robot1, self.com_robot2 = None, None
+        self.com_vel_robot1, self.com_vel_robot2 = None, None
+        self.com_acc_robot1, self.com_acc_robot2 = None, None
+
+        # markers
+        self.green_markers = VisualizationMarkers(self.cfg.marker_green_cfg)
+        self.red_markers = VisualizationMarkers(self.cfg.marker_red_cfg)
+        
             
     def _setup_scene(self):
         self.robot1 = Articulation(self.cfg.robot1)
@@ -98,6 +109,15 @@ class Env(DirectRLEnv):
         if self.cfg.action_clip[0] and self.cfg.action_clip[1]:
             actions = torch.clip(actions, min=self.cfg.action_clip[0], max=self.cfg.action_clip[1]) # clip the actions
         self.actions = actions.clone()
+
+        # visualize markers
+        marker_translations = self.default_com if self.default_com is not None else None
+        if marker_translations is not None: self.green_markers.visualize(translations=marker_translations)
+        if self.com_robot1 is not None: 
+            if self.com_robot2 is not None:
+                self.red_markers.visualize(translations=torch.cat([self.com_robot1, self.com_robot2], dim=0))
+            else:
+                self.red_markers.visualize(translations=self.com_robot1)
 
     def _apply_action(self):
         if self.cfg.sync_motion:
@@ -160,8 +180,9 @@ class Env(DirectRLEnv):
             rewards += self.reward_min_vel()
         if "stand" in self.cfg.reward:
             rewards += self.reward_stand()
-        if "com" in self.cfg.reward:
-            rewards += self.reward_com()
+        if "com acc" in self.cfg.reward:
+            self.compute_coms()
+            rewards += self.reward_com_acc()
         
         return rewards
 
@@ -469,12 +490,37 @@ class Env(DirectRLEnv):
         return reward
     
     def reward_com(self) -> torch.Tensor:
-        reward = 1 - torch.mean(torch.abs(self.compute_whole_body_com(self.robot1) - self.default_com))
-        if self.robot2:
-            reward2 = 1 - torch.mean(torch.abs(self.compute_whole_body_com(self.robot2) - self.default_com))
-            reward = (reward + reward2) / 2
-        print(f"center of mass reward: {torch.mean(reward)}")
+        self.com_robot1 = self.compute_whole_body_com(self.robot1)
+        reward = 1 - torch.mean(torch.abs(self.com_robot1 - self.default_com))
+        # todo robot2
+        # print(f"center of mass reward: {torch.mean(reward)}")
         return reward
+    
+    def reward_com_acc(self, decay: float=0.01) -> torch.Tensor:
+        reward = self.com_acc_robot1 if self.com_acc_robot1 is not None else torch.tensor([self.num_envs], device=self.device, dtype=torch.float)
+        reward = torch.exp(-decay * torch.mean(torch.abs(reward)))
+        # print(f"center of mass acc reward: {reward}")
+        return reward
+    
+    def compute_coms(self):
+        current_com_vel_robot1, current_com_acc_robot1 = None, None
+        current_com_robot1 = self.compute_whole_body_com(self.robot1)
+        if self.com_robot1 is not None: 
+            current_com_vel_robot1 = (current_com_robot1 - self.com_robot1) / self.cfg.dt
+            if self.com_vel_robot1 is not None:
+                current_com_acc_robot1 = (current_com_vel_robot1 - self.com_vel_robot1) / self.cfg.dt
+        # update coms    
+        self.com_robot1, self.com_vel_robot1, self.com_acc_robot1 = current_com_robot1, current_com_vel_robot1, current_com_acc_robot1
+
+        if self.robot2:
+            current_com_vel_robot2, current_com_acc_robot2 = None, None
+            current_com_robot2 = self.compute_whole_body_com(self.robot2)
+            if self.com_robot2 is not None: 
+                current_com_vel_robot2 = (current_com_robot2 - self.com_robot2) / self.cfg.dt
+                if self.com_vel_robot2 is not None:
+                    current_com_acc_robot2 = (current_com_vel_robot2 - self.com_vel_robot2) / self.cfg.dt
+            # update coms    
+            self.com_robot2, self.com_vel_robot2, self.com_acc_robot2 = current_com_robot2, current_com_vel_robot2, current_com_acc_robot2
 
     def compute_whole_body_com(self, robot: Articulation) -> torch.Tensor:
         body_masses = robot.data.default_mass.to(self.device)

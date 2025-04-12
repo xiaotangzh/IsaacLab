@@ -17,6 +17,10 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import PhysxCfg, SimulationCfg
 from isaaclab.utils import configclass
 
+# marker
+from isaaclab.markers import VisualizationMarkersCfg, VisualizationMarkers
+import isaaclab.sim as sim_utils
+
 MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions")
 
 
@@ -58,8 +62,9 @@ class EnvCfg(DirectRLEnvCfg):
     """
 
     # simulation
+    dt = 1 / 60
     sim: SimulationCfg = SimulationCfg(
-        dt=1 / 60,
+        dt=dt,
         render_interval=decimation,
         physx=PhysxCfg(
             gpu_found_lost_pairs_capacity=2**23,
@@ -73,6 +78,31 @@ class EnvCfg(DirectRLEnvCfg):
     # robot
     # robot1: ArticulationCfg = MISSING 
     # robot2: ArticulationCfg = MISSING 
+
+    # Create the markers configuration
+    # This creates two marker prototypes, "marker1" and "marker2" which are spheres with a radius of 1.0.
+    # The color of "marker1" is red and the color of "marker2" is green.
+    marker_green_cfg = VisualizationMarkersCfg(
+        prim_path="/World/Visuals/GreenMarkers",
+        markers={
+            "marker": sim_utils.SphereCfg(
+                radius=0.1,
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)),
+            ),
+        }
+    )
+    marker_red_cfg = VisualizationMarkersCfg(
+        prim_path="/World/Visuals/RedMarkers",
+        markers={
+            "marker": sim_utils.SphereCfg(
+                radius=0.1,
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+            ),
+        }
+    )
+    # Create the markers instance
+    # This will create a UsdGeom.PointInstancer prim at the given path along with the marker prototypes.
+    # marker = VisualizationMarkers(marker_cfg)
 
 class EnvCfg1Robot(EnvCfg):
     num_persons = 1
@@ -125,5 +155,5 @@ class PPOEnvCfg(EnvCfg1Robot):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
     robot1 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
 
-    reward = ["com"]
+    reward = ["com acc"]
     reset_strategy = "default"
