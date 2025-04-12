@@ -185,9 +185,11 @@ class Env(DirectRLEnv):
             self.compute_coms()
             rewards += self.reward_com_acc()
         
-        if torch.any(check_nan(rewards)): 
-            print("NaN detected in rewards")
-            rewards = torch.zeros([self.num_envs], device=self.device)
+        nan_envs = check_nan(rewards)
+        if torch.any(nan_envs):
+            nan_env_ids = torch.nonzero(nan_envs, as_tuple=False).flatten()
+            print(f"Warning: NaN detected in rewards {nan_env_ids.tolist()}.")
+            rewards[nan_env_ids] = 0.0
         return rewards
 
     def _reset_idx(self, env_ids: torch.Tensor | None): # env_ids: the ids of envs needed to be reset
