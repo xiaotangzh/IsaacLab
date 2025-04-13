@@ -205,6 +205,7 @@ class Env(DirectRLEnv):
             nan_env_ids = torch.nonzero(nan_envs, as_tuple=False).flatten()
             print(f"Warning: NaN detected in rewards {nan_env_ids.tolist()}.")
             rewards[nan_env_ids] = 0.0
+        rewards = rewards / len(self.cfg.reward)
         return rewards
 
     def _reset_idx(self, env_ids: torch.Tensor | None): # env_ids: the ids of envs needed to be reset
