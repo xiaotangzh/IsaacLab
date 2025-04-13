@@ -31,4 +31,4 @@ cd "/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/my_tasks"
 
 # python train.py  --task PPO --num_envs 4096 --name "com acc env4096 steps 300000 version 2" --steps 300000 --params 1024 --wandb --headless --checkpoint "logs/PPO/com acc env4096 steps 300000/checkpoints/best_agent.pt"
 
-python train.py  --task PPOHumanoid --num_envs 4096 --name "humanoid com acc preprocessor lr 1e-5 env4096 steps 30w" --steps 300000 --params 1024 --wandb --headless --lr 1e-5
+python train.py  --task PPOHumanoid --num_envs 4096 --name "humanoid com acc preprocessor lr 1e-5 env4096 steps 30w height 2" --steps 300000 --params 1024 --wandb --headless --lr 1e-5
