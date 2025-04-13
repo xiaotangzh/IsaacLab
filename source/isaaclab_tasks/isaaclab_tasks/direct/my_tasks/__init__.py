@@ -45,7 +45,7 @@ gym.register(
     },
 )
 
-## Two Robots registrationo
+## Two Robots registration
 gym.register(
     id="AMP-InterHuman-2Robots",
     entry_point=f"{__name__}.env:Env",

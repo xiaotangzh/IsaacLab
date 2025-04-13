@@ -26,41 +26,38 @@ from .terrain.terrain_generator_cfg import ROUGH_TERRAINS_CFG
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
 
+# motion directory
 MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions")
 
 
 @configclass
 class EnvCfg(DirectRLEnvCfg):
-    """Humanoid AMP environment config (base class)."""
-
     # env
-    episode_length_s = 30.0 # 10s * 30fps = 300 frames
+    episode_length_s = 10.0 # 10s * 30fps = 300 frames
     decimation = 2
 
-    # num_persons = 2
-    # observation_space = 151 * num_persons
-    # action_space = 69 * num_persons
-    # state_space = 0
-    # num_amp_observations = 2
-    # amp_observation_space = observation_space
+    observation_space: int = MISSING
+    action_space: int = MISSING
+    state_space: int = 0
+    num_amp_observations: int = 2
+    amp_observation_space: int = MISSING
 
-    early_termination = True
-    termination_bodies = ["Pelvis", "Head"]
-    termination_heights = [0.5, 0.8]
-    action_clip = [-0.1, 0.1]
+    action_clip: list = [-0.1, 0.1]
+    init_root_height: float = 0.15
     
     # reward
     reward: list = []
     
     # motions
-    # motion_file_1: str = MISSING
-    # motion_file_2: str = MISSING
-    reference_body = "Pelvis"
+    early_termination: bool = True
+    key_body_names: list = MISSING
+    termination_bodies: list = MISSING
+    termination_heights: list = MISSING
+    reference_body: str = MISSING
     sync_motion = False # apply reference actions instead of predicted actions to robots
-    reset_strategy: str = MISSING  # default, random, random-start
+    reset_strategy: str = "default"  # default, random, random-start
     
     """Strategy to be followed when resetting each environment (humanoid's pose and joint states).
-
     * default: pose and joint states are set to the initial state of the asset.
     * random: pose and joint states are set by sampling motions at random, uniform times.
     * random-start: pose and joint states are set by sampling motion at the start (time zero).
@@ -78,121 +75,9 @@ class EnvCfg(DirectRLEnvCfg):
     )
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=16, env_spacing=2.0, replicate_physics=True)
-    terrain: TerrainImporterCfg = MISSING
-
-    # robot
-    # robot1: ArticulationCfg = MISSING 
-    # robot2: ArticulationCfg = MISSING 
-
-    # Create the markers configuration
-    # This creates two marker prototypes, "marker1" and "marker2" which are spheres with a radius of 1.0.
-    # The color of "marker1" is red and the color of "marker2" is green.
-    marker_green_cfg = VisualizationMarkersCfg(
-        prim_path="/World/Visuals/GreenMarkers",
-        markers={
-            "marker": sim_utils.SphereCfg(
-                radius=0.1,
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)),
-            ),
-        }
-    )
-    marker_red_cfg = VisualizationMarkersCfg(
-        prim_path="/World/Visuals/RedMarkers",
-        markers={
-            "marker": sim_utils.SphereCfg(
-                radius=0.1,
-                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
-            ),
-        }
-    )
-    # Create the markers instance
-    # This will create a UsdGeom.PointInstancer prim at the given path along with the marker prototypes.
-    # marker = VisualizationMarkers(marker_cfg)
-
-class EnvCfg1Robot(EnvCfg):
-    num_persons = 1
-    observation_space = 151 * num_persons
-    action_space = 69 * num_persons
-    state_space = 0
-    num_amp_observations = 2
-    amp_observation_space = observation_space
-
-    # robot
-    robot1 = None
-
-    motion_file_1: str = MISSING
-
-class EnvCfg2Robots(EnvCfg):
-    num_persons = 2
-    observation_space = 151 * num_persons
-    action_space = 69 * num_persons
-    state_space = 0
-    num_amp_observations = 2
-    amp_observation_space = observation_space
-
-    # robot
-    robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
-    robot2: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot2")
-
-    motion_file_1: str = MISSING
-    motion_file_2: str = MISSING
-
-@configclass
-class AmpInterHumanEnvCfg2Robots(EnvCfg2Robots):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
-    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/1_2.npz")
-    # robot1 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
-    # robot2 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot2")
-
-    reward = ["ones"]
-    reset_strategy = "random"
-
-@configclass
-class AmpInterHumanEnvCfg(EnvCfg1Robot):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
-    robot1 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
-
-    reward = ["ones"]
-    reset_strategy = "random"
-    
-@configclass
-class PPOEnvCfg(EnvCfg1Robot):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
-    robot1 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
-
-    reward = ["com acc"]
-    reset_strategy = "default"
-
-@configclass
-class PPOHumanoidEnvCfg(EnvCfg1Robot):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid/humanoid_walk.npz")
-    robot1 = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot").replace(
-        actuators={
-            "body": ImplicitActuatorCfg(
-                joint_names_expr=[".*"],
-                velocity_limit=100.0,
-                stiffness=None,
-                damping=None,
-            ),
-        },
-    )
-
-    reward = ["com acc"]
-    reset_strategy = "default"
-
-    termination_bodies = ["torso", "head"]
-    termination_heights = [0.5, 0.8]
-    reference_body = "torso"
-
-    observation_space = 69
-    action_space = 28
-    amp_observation_space = observation_space
-
-    action_clip = [None, None]
-
-    # ground terrain
-    terrain = TerrainImporterCfg(
+    terrain: str = "default"
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=16, env_spacing=7.0, replicate_physics=True)
+    terrain_cfg = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
         terrain_generator=ROUGH_TERRAINS_CFG,
@@ -211,3 +96,148 @@ class PPOHumanoidEnvCfg(EnvCfg1Robot):
         ),
         debug_vis=False,
     )
+
+    # robot
+    robot_format: str = MISSING
+
+    # Create the markers configuration
+    marker_green_cfg = VisualizationMarkersCfg(
+        prim_path="/World/Visuals/GreenMarkers",
+        markers={
+            "marker": sim_utils.SphereCfg(
+                radius=0.1,
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)),
+            ),
+        }
+    )
+    marker_red_cfg = VisualizationMarkersCfg(
+        prim_path="/World/Visuals/RedMarkers",
+        markers={
+            "marker": sim_utils.SphereCfg(
+                radius=0.1,
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+            ),
+        }
+    )
+
+class EnvCfg1Robot(EnvCfg):
+    robot1: ArticulationCfg = MISSING
+    motion_file_1: str = MISSING
+
+class EnvCfg2Robots(EnvCfg):
+    robot1: ArticulationCfg = MISSING
+    robot2: ArticulationCfg = MISSING
+    motion_file_1: str = MISSING
+    motion_file_2: str = MISSING
+
+class EnvCfg1RobotSMPL(EnvCfg2Robots):
+    robot_format = "SMPL"
+    robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
+
+    termination_bodies = ["Pelvis", "Head"]
+    termination_heights = [0.5, 0.8]
+    observation_space = 151 
+    action_space = 69 
+    amp_observation_space = observation_space
+    key_body_names = ["L_Hand", "R_Hand", "L_Toe", "R_Toe", "Head"]
+    reference_body = "Pelvis"
+
+class EnvCfg2RobotsSMPL(EnvCfg2Robots):
+    robot_format = "SMPL"
+    robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
+    robot2: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot2")
+
+    termination_bodies = ["Pelvis", "Head"]
+    termination_heights = [0.5, 0.8]
+    observation_space = 151 * 2
+    action_space = 69 * 2
+    amp_observation_space = observation_space
+    key_body_names = ["L_Hand", "R_Hand", "L_Toe", "R_Toe", "Head"]
+    reference_body = "Pelvis"
+
+class EnvCfg1RobotHumanoid(EnvCfg1Robot):
+    robot_format = "humanoid"
+    robot1 = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot1").replace(
+        actuators={
+            "body": ImplicitActuatorCfg(
+                joint_names_expr=[".*"],
+                velocity_limit=100.0,
+                stiffness=None,
+                damping=None,
+            ),
+        },
+    )
+    termination_bodies = ["torso", "head"]
+    termination_heights = [0.4, 0.7]
+    observation_space = 69
+    action_space = 28
+    amp_observation_space = observation_space
+    key_body_names = ["right_hand", "left_hand", "right_foot", "left_foot"]
+    reference_body = "torso"
+
+class EnvCfg2RobotHumanoid(EnvCfg2Robots):
+    robot_format = "humanoid"
+    robot1 = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot1").replace(
+        actuators={
+            "body": ImplicitActuatorCfg(
+                joint_names_expr=[".*"],
+                velocity_limit=100.0,
+                stiffness=None,
+                damping=None,
+            ),
+        },
+    )
+    robot2 = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot2").replace(
+        actuators={
+            "body": ImplicitActuatorCfg(
+                joint_names_expr=[".*"],
+                velocity_limit=100.0,
+                stiffness=None,
+                damping=None,
+            ),
+        },
+    )
+    termination_bodies = ["torso", "head"]
+    termination_heights = [0.4, 0.7]
+    observation_space = 69 * 2
+    action_space = 28 * 2
+    amp_observation_space = observation_space
+    key_body_names = ["right_hand", "left_hand", "right_foot", "left_foot"]
+    reference_body = "torso"
+
+@configclass
+class AmpInterHumanEnvCfg2Robots(EnvCfg2RobotsSMPL):
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
+    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/1_2.npz")
+
+    reward = ["ones"]
+    reset_strategy = "random"
+
+@configclass
+class AmpInterHumanEnvCfg(EnvCfg1RobotSMPL):
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
+
+    reward = ["ones"]
+    reset_strategy = "random"
+    
+@configclass
+class PPOEnvCfg(EnvCfg1RobotSMPL):
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
+    robot1 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
+
+    reward = ["com acc"]
+    reset_strategy = "default"
+
+@configclass
+class PPOHumanoidEnvCfg(EnvCfg1RobotHumanoid):
+    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid/humanoid_walk.npz")
+    reward = ["com_acc", "stand_forward"]
+    reset_strategy = "default"
+
+    # action_clip = [None, None]
+    terrain = "uneven"
+
+    init_root_height = 2.0
+    episode_length_s = 30.0
+
+    scene = InteractiveSceneCfg(num_envs=16, env_spacing=2.0, replicate_physics=True)

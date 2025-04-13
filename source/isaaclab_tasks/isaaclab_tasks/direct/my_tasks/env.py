@@ -16,8 +16,8 @@ from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.math import quat_rotate
 
 from .env_cfg import EnvCfg
-# from .motions.motion_loader_smpl import MotionLoader
-from .motions.motion_loader_humanoid import MotionLoader
+from .motions.motion_loader_smpl import MotionLoader as MotionLoaderSMPL
+from .motions.motion_loader_humanoid import MotionLoader as MotionLoaderHumanoid
 import sys
 # marker
 from isaaclab.markers import VisualizationMarkersCfg, VisualizationMarkers
@@ -38,17 +38,17 @@ class Env(DirectRLEnv):
         self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
         self.action_scale = dof_upper_limits - dof_lower_limits
         self.action_clip = self.cfg.action_clip
-        self.init_root_height = 2.0
         self.termination_heights = torch.tensor(self.cfg.termination_heights, device=self.device)
 
         # load motion
+        if self.cfg.robot_format == "humanoid": MotionLoader = MotionLoaderHumanoid
+        else: MotionLoader = MotionLoaderSMPL
         self._motion_loader_1 = MotionLoader(motion_file=self.cfg.motion_file_1, device=self.device)
         self._motion_loader_2 = MotionLoader(motion_file=self.cfg.motion_file_2, device=self.device) if hasattr(self.cfg, "motion_file_2") else None 
         self.sample_times = None # synchronize sampling times for two robots
 
         # DOF and key body indexes
-        # key_body_names = ["L_Hand", "R_Hand", "L_Toe", "R_Toe", "Head"]
-        key_body_names = ["right_hand", "left_hand", "right_foot", "left_foot"]
+        key_body_names = self.cfg.key_body_names
         self.ref_body_index = self.robot1.data.body_names.index(self.cfg.reference_body)
         self.early_termination_body_indexes = [self.robot1.data.body_names.index(name) for name in self.cfg.termination_bodies]
         self.key_body_indexes = [self.robot1.data.body_names.index(name) for name in key_body_names]
@@ -65,7 +65,7 @@ class Env(DirectRLEnv):
         
         # do not lift root height in some tasks
         if "imitation" in self.cfg.reward or self.cfg.sync_motion:
-            self.init_root_height = 0.0
+            self.cfg.init_root_height = 0.0
             self.cfg.episode_length_s = self._motion_loader_1.duration
         
         # sync motion
@@ -91,17 +91,19 @@ class Env(DirectRLEnv):
         self.robot1 = Articulation(self.cfg.robot1)
         self.robot2 = Articulation(self.cfg.robot2) if hasattr(self.cfg, "robot2") else None
         # add ground plane
-        # spawn_ground_plane(
-        #     prim_path="/World/ground",
-        #     cfg=GroundPlaneCfg(
-        #         physics_material=sim_utils.RigidBodyMaterialCfg(
-        #             static_friction=1.0,
-        #             dynamic_friction=1.0,
-        #             restitution=0.0,
-        #         ),
-        #     ),
-        # )
-        TerrainImporter(self.cfg.terrain)
+        if self.cfg.terrain == "uneven":
+            TerrainImporter(self.cfg.terrain_cfg)
+        else:
+            spawn_ground_plane(
+                prim_path="/World/ground",
+                cfg=GroundPlaneCfg(
+                    physics_material=sim_utils.RigidBodyMaterialCfg(
+                        static_friction=1.0,
+                        dynamic_friction=1.0,
+                        restitution=0.0,
+                    ),
+                ),
+            )
         # clone and replicate
         self.scene.clone_environments(copy_from_source=False)
         # add articulation to scene
@@ -188,7 +190,7 @@ class Env(DirectRLEnv):
             rewards += self.reward_min_vel()
         if "stand" in self.cfg.reward:
             rewards += self.reward_stand()
-        if "com acc" in self.cfg.reward:
+        if "com_acc" in self.cfg.reward:
             self.compute_coms()
             rewards += self.reward_com_acc()
         
@@ -319,13 +321,13 @@ class Env(DirectRLEnv):
     def reset_strategy_default(self, env_ids: torch.Tensor, robot: Articulation) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         root_state = robot.data.default_root_state[env_ids].clone()
         root_state[:, :3] += self.scene.env_origins[env_ids]
-        root_state[:, 2] += self.init_root_height  # lift the humanoid slightly to avoid collisions with the ground
+        root_state[:, 2] += self.cfg.init_root_height  # lift the humanoid slightly to avoid collisions with the ground
         joint_pos = robot.data.default_joint_pos[env_ids].clone()
         joint_vel = robot.data.default_joint_vel[env_ids].clone()
         return root_state, joint_pos, joint_vel
 
     def reset_strategy_random(
-        self, env_ids: torch.Tensor, motion_loader: MotionLoader, start: bool = False
+        self, env_ids: torch.Tensor, motion_loader, start: bool = False
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]: # env_ids: the ids of envs to be reset
         num_samples = env_ids.shape[0]
 
@@ -349,7 +351,7 @@ class Env(DirectRLEnv):
         root_state[:, 3:7] = body_rotations[:, motion_root_index]
         root_state[:, 7:10] = root_linear_velocity
         root_state[:, 10:13] = root_angular_velocity
-        root_state[:, 2] += self.init_root_height  # lift the humanoid slightly to avoid collisions with the ground
+        root_state[:, 2] += self.cfg.init_root_height  # lift the humanoid slightly to avoid collisions with the ground
         # get DOFs state
         dof_pos = dof_positions[:, self.motion_dof_indexes]
         dof_vel = dof_velocities[:, self.motion_dof_indexes]
@@ -357,7 +359,7 @@ class Env(DirectRLEnv):
         return root_state, dof_pos, dof_vel
 
     # Collect ground truth observations, used in agent
-    def collect_reference_motions(self, num_samples: int, current_times: np.ndarray | None = None, motion_loader: MotionLoader | None=None) -> torch.Tensor:
+    def collect_reference_motions(self, num_samples: int, current_times: np.ndarray | None = None, motion_loader=None) -> torch.Tensor:
         # sample random motion times (or use the one specified)
         if current_times is None:
             current_times = self._motion_loader_1.sample_times(num_samples)
@@ -436,7 +438,7 @@ class Env(DirectRLEnv):
 
             return amp_observation
     
-    def reset_reference_buffer(self, motion_loader: MotionLoader, ref_state_buffer: dict, env_ids: torch.Tensor | None=None):
+    def reset_reference_buffer(self, motion_loader, ref_state_buffer: dict, env_ids: torch.Tensor | None=None):
         env_ids = self.robot1._ALL_INDICES if env_ids is None else env_ids
         num_samples = env_ids.shape[0]
         motion_root_index = motion_loader.get_body_index([self.cfg.reference_body])[0]
@@ -481,11 +483,11 @@ class Env(DirectRLEnv):
                                        None, robot._ALL_INDICES)
 
     def reward_stand_forward(self) -> torch.Tensor:
-        target_quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=self.device)
-        reward = self.compute_stand_forward_reward(target_quat, self.robot1) 
+        target_forward = torch.tensor([1.0, 0.0, 0.0], device=self.device).unsqueeze(0).repeat(self.num_envs, 1)
+        reward = self.compute_stand_forward_reward(target_forward, self.robot1) 
         if self.robot2: 
-            reward = (reward + self.compute_stand_forward_reward(target_quat, self.robot2)) / 2
-        # print(f"stand forward reward: {torch.mean(reward)}")
+            reward = (reward + self.compute_stand_forward_reward(target_forward, self.robot2)) / 2
+        print(f"stand forward reward: {torch.mean(reward)}")
         return reward
     
     def reward_min_vel(self) -> torch.Tensor: # [0, 3]
@@ -553,11 +555,19 @@ class Env(DirectRLEnv):
         
         return whole_body_com
     
-    def compute_stand_forward_reward(self, target_quat, robot) -> torch.Tensor:
+    def compute_stand_forward_reward(self, target_forward, robot) -> torch.Tensor:
+        # current_quat = robot.data.body_quat_w[:, self.ref_body_index]
+        # current_quat = current_quat / torch.norm(current_quat, dim=-1, keepdim=True)
+        # reward = torch.abs(torch.sum(target_quat * current_quat, dim=-1)) 
+
         current_quat = robot.data.body_quat_w[:, self.ref_body_index]
         current_quat = current_quat / torch.norm(current_quat, dim=-1, keepdim=True)
-        reward = torch.abs(torch.sum(target_quat * current_quat, dim=-1)) 
-        return reward
+        current_forward = quat_rotate(current_quat, target_forward)
+        # 计算当前前向与目标前向（+X 轴）的点积（即 cosθ，θ 是偏差角）
+        forward_reward = current_forward[:, 0]  # 只取 X 分量
+        # 将奖励归一化到 [0, 1] 范围（-1 向后，+1 向前 → 映射到 [0, 1]）
+        forward_reward = (forward_reward + 1.0) / 2.0
+        return forward_reward
     
     def reward_imitation(self) -> torch.Tensor:
         frames = self._motion_loader_1.num_frames
