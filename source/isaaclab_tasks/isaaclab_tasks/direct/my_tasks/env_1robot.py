@@ -16,7 +16,7 @@ from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.math import quat_rotate
 
 from .env_1robot_cfg import Env1RobotCfg
-from .motions.motion_loader import MotionLoader
+from .motions.motion_loader_smpl import MotionLoader
 import sys
 
 class Env1Robot(DirectRLEnv):

@@ -16,7 +16,8 @@ from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.math import quat_rotate
 
 from .env_cfg import EnvCfg
-from .motions.motion_loader import MotionLoader
+# from .motions.motion_loader_smpl import MotionLoader
+from .motions.motion_loader_humanoid import MotionLoader
 import sys
 # marker
 from isaaclab.markers import VisualizationMarkersCfg, VisualizationMarkers
@@ -34,7 +35,7 @@ class Env(DirectRLEnv):
         self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
         self.action_scale = dof_upper_limits - dof_lower_limits
         self.action_clip = self.cfg.action_clip
-        self.init_root_height = 0.3
+        self.init_root_height = 1
         self.termination_heights = torch.tensor(self.cfg.termination_heights, device=self.device)
 
         # load motion
@@ -43,7 +44,8 @@ class Env(DirectRLEnv):
         self.sample_times = None # synchronize sampling times for two robots
 
         # DOF and key body indexes
-        key_body_names = ["L_Hand", "R_Hand", "L_Toe", "R_Toe", "Head"]
+        # key_body_names = ["L_Hand", "R_Hand", "L_Toe", "R_Toe", "Head"]
+        key_body_names = ["right_hand", "left_hand", "right_foot", "left_foot"]
         self.ref_body_index = self.robot1.data.body_names.index(self.cfg.reference_body)
         self.early_termination_body_indexes = [self.robot1.data.body_names.index(name) for name in self.cfg.termination_bodies]
         self.key_body_indexes = [self.robot1.data.body_names.index(name) for name in key_body_names]
@@ -64,11 +66,12 @@ class Env(DirectRLEnv):
             self.cfg.episode_length_s = self._motion_loader_1.duration
         
         # sync motion
-        self.ref_state_buffer_length, self.ref_state_buffer_index = self.max_episode_length, 0
-        self.ref_state_buffer_1 = {}
-        self.ref_state_buffer_2 = {}
-        self.reset_reference_buffer(self._motion_loader_1, self.ref_state_buffer_1)
-        if hasattr(self.cfg, "robot2"): self.reset_reference_buffer(self._motion_loader_2, self.ref_state_buffer_2)
+        if self.cfg.sync_motion:
+            self.ref_state_buffer_length, self.ref_state_buffer_index = self.max_episode_length, 0
+            self.ref_state_buffer_1 = {}
+            self.ref_state_buffer_2 = {}
+            self.reset_reference_buffer(self._motion_loader_1, self.ref_state_buffer_1)
+            if hasattr(self.cfg, "robot2"): self.reset_reference_buffer(self._motion_loader_2, self.ref_state_buffer_2)
 
         # other properties
         zeros = torch.zeros([self.num_envs, 3], device=self.device, dtype=torch.float32)

@@ -113,7 +113,7 @@ class EnvCfg1Robot(EnvCfg):
     amp_observation_space = observation_space
 
     # robot
-    robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
+    robot1 = None
 
     motion_file_1: str = MISSING
 
@@ -157,3 +157,30 @@ class PPOEnvCfg(EnvCfg1Robot):
 
     reward = ["com acc"]
     reset_strategy = "default"
+
+@configclass
+class PPOHumanoidEnvCfg(EnvCfg1Robot):
+    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid/humanoid_walk.npz")
+    robot1 = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot").replace(
+        actuators={
+            "body": ImplicitActuatorCfg(
+                joint_names_expr=[".*"],
+                velocity_limit=100.0,
+                stiffness=None,
+                damping=None,
+            ),
+        },
+    )
+
+    reward = ["com acc"]
+    reset_strategy = "default"
+
+    termination_bodies = ["torso", "head"]
+    termination_heights = [0.5, 0.8]
+    reference_body = "torso"
+
+    observation_space = 69
+    action_space = 28
+    amp_observation_space = observation_space
+
+    action_clip = [None, None]
