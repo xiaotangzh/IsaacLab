@@ -275,3 +275,5 @@ if __name__ == "__main__":
     print("- number of frames:", motion.num_frames)
     print("- number of DOFs:", motion.num_dofs)
     print("- number of bodies:", motion.num_bodies)
+    print(" body name: ", motion.body_names)
+    print(" dof name: ", motion.dof_names)

@@ -25,7 +25,7 @@ parser.add_argument("--name", type=str, default="", help="Name of the experiment
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint to resume training.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--wandb", action="store_true", default=False, help="Log training results to Weight and Bias.")
-parser.add_argument("--lr", type=float, default=0.0, help="Learning rate.")
+parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate.")
 parser.add_argument("--params", type=int, default=1024, help="Number of parameters for learning.")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
