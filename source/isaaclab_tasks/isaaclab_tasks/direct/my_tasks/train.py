@@ -120,6 +120,13 @@ elif "PPO" in args.task:
         num_envs=env.num_envs, 
         device=device  
     )
+
+    agent_cfg["state_preprocessor"] = RunningStandardScaler
+    agent_cfg["state_preprocessor_kwargs"] = {"size": env.observation_space}
+    agent_cfg["value_preprocessor_1"] = RunningStandardScaler 
+    agent_cfg["value_preprocessor_2"] = RunningStandardScaler 
+    agent_cfg["value_preprocessor_kwargs"] = {"size": 1}
+    agent_cfg["clip_predicted_values"] = True
     
     # custom configurations
     if args.lr: agent_cfg["learning_rate"] = args.lr
