@@ -27,4 +27,8 @@ path_to_your_repo="/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/d
 export PYTHONPATH=$PYTHONPATH:$path_to_your_repo
 cd "/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/my_tasks"
 
-python train.py  --task AMP-InterHuman-2Robots --num_envs 4096 --name "motion 26 env4096 steps 300000 params 2048" --steps 300000 --params 2048 --wandb --headless
+# python train.py  --task AMP-InterHuman-2Robots --num_envs 4096 --name "motion 26 env4096 steps 30w params 1024" --steps 300000 --params 1024 --wandb --headless
+
+# python train.py  --task PPO --num_envs 4096 --name "com acc env4096 steps 300000 version 2" --steps 300000 --params 1024 --wandb --headless --checkpoint "logs/PPO/com acc env4096 steps 300000/checkpoints/best_agent.pt"
+
+python train.py  --task PPOHumanoid --num_envs 15000 --name "com acc env15000 steps 30w" --steps 300000 --params 1024 --wandb --headless
