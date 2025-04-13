@@ -77,11 +77,14 @@ class Env(DirectRLEnv):
             if hasattr(self.cfg, "robot2"): self.reset_reference_buffer(self._motion_loader_2, self.ref_state_buffer_2)
 
         # other properties
-        zeros = torch.zeros([self.num_envs, 3], device=self.device, dtype=torch.float32)
+        zeros_3dim = torch.zeros([self.num_envs, 3], device=self.device, dtype=torch.float32)
+        zeros_1dim = torch.zeros([self.num_envs, 1], device=self.device, dtype=torch.float32)
         self.default_com = None
-        self.com_robot1, self.com_robot2 = zeros.clone(), zeros.clone()
-        self.com_vel_robot1 = zeros.clone()
-        self.com_acc_robot1 = zeros.clone()
+        self.com_robot1, self.com_robot2 = zeros_3dim.clone(), zeros_3dim.clone()
+        self.com_vel_robot1 = zeros_3dim.clone()
+        self.com_acc_robot1 = zeros_3dim.clone()
+        self.current_root_forward_offset = zeros_1dim.clone()
+        self.current_root_upward_offset = zeros_1dim.clone() #todo robot 2
 
         # markers
         # self.green_markers = VisualizationMarkers(self.cfg.marker_green_cfg)
@@ -154,6 +157,9 @@ class Env(DirectRLEnv):
         if self.cfg.early_termination:
             died_1 = self.robot1.data.body_pos_w[:, self.early_termination_body_indexes, 2] < self.termination_heights
             died_1 = torch.max(died_1, dim=1).values
+
+            died_1_fall = self.compute_angle_offset("upward", self.robot1) < 0.3 #todo robot2 
+            died_1 = torch.max(torch.stack([died_1, died_1_fall], dim=0), dim=0).values
             
             if self.robot2:
                 died_2 = self.robot2.data.body_pos_w[:, self.early_termination_body_indexes, 2] < self.termination_heights
@@ -483,11 +489,12 @@ class Env(DirectRLEnv):
                                        None, robot._ALL_INDICES)
 
     def reward_stand_forward(self) -> torch.Tensor:
-        target_forward = torch.tensor([1.0, 0.0, 0.0], device=self.device).unsqueeze(0).repeat(self.num_envs, 1)
-        reward = self.compute_stand_forward_reward(target_forward, self.robot1) 
+        angle_offset = self.compute_angle_offset("forward", self.robot1) 
+        reward = torch.abs(angle_offset)
         if self.robot2: 
-            reward = (reward + self.compute_stand_forward_reward(target_forward, self.robot2)) / 2
-        print(f"stand forward reward: {torch.mean(reward)}")
+            angle_offset2 = self.compute_angle_offset("forward", self.robot2)
+            reward = (reward + torch.abs(angle_offset2)) / 2
+        # print(f"stand forward reward: {torch.mean(reward)}")
         return reward
     
     def reward_min_vel(self) -> torch.Tensor: # [0, 3]
@@ -555,19 +562,22 @@ class Env(DirectRLEnv):
         
         return whole_body_com
     
-    def compute_stand_forward_reward(self, target_forward, robot) -> torch.Tensor:
-        # current_quat = robot.data.body_quat_w[:, self.ref_body_index]
-        # current_quat = current_quat / torch.norm(current_quat, dim=-1, keepdim=True)
-        # reward = torch.abs(torch.sum(target_quat * current_quat, dim=-1)) 
+    def compute_angle_offset(self, target_direction, robot: Articulation) -> torch.Tensor:
+        if target_direction == "forward":
+            target_direction = torch.tensor([1.0, 0.0, 0.0], device=self.device).unsqueeze(0).repeat(self.num_envs, 1)
+            idx = 0
+        elif target_direction == "leftward":
+            target_direction = torch.tensor([0.0, 1.0, 0.0], device=self.device).unsqueeze(0).repeat(self.num_envs, 1)
+            idx = 1
+        elif target_direction == "upward":
+            target_direction = torch.tensor([0.0, 0.0, 1.0], device=self.device).unsqueeze(0).repeat(self.num_envs, 1)
+            idx = 2
 
         current_quat = robot.data.body_quat_w[:, self.ref_body_index]
         current_quat = current_quat / torch.norm(current_quat, dim=-1, keepdim=True)
-        current_forward = quat_rotate(current_quat, target_forward)
-        # 计算当前前向与目标前向（+X 轴）的点积（即 cosθ，θ 是偏差角）
-        forward_reward = current_forward[:, 0]  # 只取 X 分量
-        # 将奖励归一化到 [0, 1] 范围（-1 向后，+1 向前 → 映射到 [0, 1]）
-        forward_reward = (forward_reward + 1.0) / 2.0
-        return forward_reward
+        current_direction = quat_rotate(current_quat, target_direction)
+        angle_offset = current_direction[:, idx]  # [-1, 1] from opposite to same direction as target
+        return angle_offset
     
     def reward_imitation(self) -> torch.Tensor:
         frames = self._motion_loader_1.num_frames
