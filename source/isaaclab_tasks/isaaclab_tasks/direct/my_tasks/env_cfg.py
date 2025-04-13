@@ -183,4 +183,4 @@ class PPOHumanoidEnvCfg(EnvCfg1Robot):
     action_space = 28
     amp_observation_space = observation_space
 
-    action_clip = [None, None]
+    # action_clip = [None, None]
