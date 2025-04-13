@@ -21,6 +21,11 @@ from isaaclab.utils import configclass
 from isaaclab.markers import VisualizationMarkersCfg, VisualizationMarkers
 import isaaclab.sim as sim_utils
 
+# terrain
+from .terrain.terrain_generator_cfg import ROUGH_TERRAINS_CFG
+from isaaclab.terrains import TerrainImporterCfg
+from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
+
 MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions")
 
 
@@ -73,7 +78,8 @@ class EnvCfg(DirectRLEnvCfg):
     )
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=16, env_spacing=5.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=16, env_spacing=2.0, replicate_physics=True)
+    terrain: TerrainImporterCfg = MISSING
 
     # robot
     # robot1: ArticulationCfg = MISSING 
@@ -183,4 +189,25 @@ class PPOHumanoidEnvCfg(EnvCfg1Robot):
     action_space = 28
     amp_observation_space = observation_space
 
-    # action_clip = [None, None]
+    action_clip = [None, None]
+
+    # ground terrain
+    terrain = TerrainImporterCfg(
+        prim_path="/World/ground",
+        terrain_type="generator",
+        terrain_generator=ROUGH_TERRAINS_CFG,
+        max_init_terrain_level=0,
+        collision_group=-1,
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            friction_combine_mode="multiply",
+            restitution_combine_mode="multiply",
+            static_friction=1.0,
+            dynamic_friction=1.0,
+        ),
+        visual_material=sim_utils.MdlFileCfg(
+            mdl_path=f"{ISAACLAB_NUCLEUS_DIR}/Materials/TilesMarbleSpiderWhiteBrickBondHoned/TilesMarbleSpiderWhiteBrickBondHoned.mdl",
+            project_uvw=True,
+            texture_scale=(0.25, 0.25),
+        ),
+        debug_vis=False,
+    )

@@ -23,6 +23,9 @@ import sys
 from isaaclab.markers import VisualizationMarkersCfg, VisualizationMarkers
 import isaaclab.sim as sim_utils
 
+# terrain
+from isaaclab.terrains import TerrainImporter
+
 class Env(DirectRLEnv):
     cfg: EnvCfg
 
@@ -40,7 +43,7 @@ class Env(DirectRLEnv):
 
         # load motion
         self._motion_loader_1 = MotionLoader(motion_file=self.cfg.motion_file_1, device=self.device)
-        self._motion_loader_2 = MotionLoader(motion_file=self.cfg.motion_file_2, device=self.device) if hasattr(self.cfg, "motion_file_2") else None
+        self._motion_loader_2 = MotionLoader(motion_file=self.cfg.motion_file_2, device=self.device) if hasattr(self.cfg, "motion_file_2") else None 
         self.sample_times = None # synchronize sampling times for two robots
 
         # DOF and key body indexes
@@ -88,16 +91,17 @@ class Env(DirectRLEnv):
         self.robot1 = Articulation(self.cfg.robot1)
         self.robot2 = Articulation(self.cfg.robot2) if hasattr(self.cfg, "robot2") else None
         # add ground plane
-        spawn_ground_plane(
-            prim_path="/World/ground",
-            cfg=GroundPlaneCfg(
-                physics_material=sim_utils.RigidBodyMaterialCfg(
-                    static_friction=1.0,
-                    dynamic_friction=1.0,
-                    restitution=0.0,
-                ),
-            ),
-        )
+        # spawn_ground_plane(
+        #     prim_path="/World/ground",
+        #     cfg=GroundPlaneCfg(
+        #         physics_material=sim_utils.RigidBodyMaterialCfg(
+        #             static_friction=1.0,
+        #             dynamic_friction=1.0,
+        #             restitution=0.0,
+        #         ),
+        #     ),
+        # )
+        TerrainImporter(self.cfg.terrain)
         # clone and replicate
         self.scene.clone_environments(copy_from_source=False)
         # add articulation to scene
