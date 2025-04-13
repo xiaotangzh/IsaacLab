@@ -34,7 +34,7 @@ class Env(DirectRLEnv):
         self.action_offset = 0.5 * (dof_upper_limits + dof_lower_limits)
         self.action_scale = dof_upper_limits - dof_lower_limits
         self.action_clip = self.cfg.action_clip
-        self.init_root_height = 0.07
+        self.init_root_height = 0.3
         self.termination_heights = torch.tensor(self.cfg.termination_heights, device=self.device)
 
         # load motion
