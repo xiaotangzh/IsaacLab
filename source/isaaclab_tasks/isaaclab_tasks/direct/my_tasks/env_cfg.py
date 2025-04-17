@@ -231,7 +231,7 @@ class PPOEnvCfg(EnvCfg1RobotSMPL):
 @configclass
 class PPOHumanoidEnvCfg(EnvCfg1RobotHumanoid):
     motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid/humanoid_walk.npz")
-    reward = ["com_acc", "stand_forward"]
+    reward = ["com_acc"]
     reset_strategy = "default"
 
     # action_clip = [None, None]
