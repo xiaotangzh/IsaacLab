@@ -47,6 +47,8 @@ class MotionLoader:
         self.duration = self.dt * (self.num_frames - 1)
         print(f"Motion loaded ({motion_file}): duration: {self.duration} sec, frames: {self.num_frames}")
 
+        self.relative_pose = None # (frames, body num, 3)
+
     @property
     def dof_names(self) -> list[str]:
         """Skeleton DOF names."""
@@ -174,6 +176,12 @@ class MotionLoader:
         index_1 = np.minimum(index_0 + 1, self.num_frames - 1)
         blend = ((times - index_0 * self.dt) / self.dt).round(decimals=5)
         return index_0, index_1, blend
+    
+    def _from_time_to_frame(self, times: np.ndarray):
+        phase = np.clip(times / self.duration, 0.0, 1.0)
+        index_0 = (phase * (self.num_frames - 1)).round(decimals=0).astype(int)
+        index_1 = np.minimum(index_0 + 1, self.num_frames - 1)
+        return index_0, index_1
 
     def sample_times(self, num_samples: int, duration: float | None = None) -> np.ndarray:
         """Sample random motion times uniformly.
@@ -225,7 +233,15 @@ class MotionLoader:
             self._interpolate(self.root_linear_velocity, blend=blend, start=index_0, end=index_1),
             self._interpolate(self.root_angular_velocity, blend=blend, start=index_0, end=index_1),
         )
-        
+    
+    def get_relative_pose(self, times: np.ndarray | None=None, frame: torch.Tensor | None=None) -> torch.Tensor: # frame=(num_envs,)
+        assert self.relative_pose is not None
+        if frame is not None:
+            return self.relative_pose[frame]
+        else: 
+            frame0, frame1 = self._from_time_to_frame(times)
+            return torch.cat([self.relative_pose[frame0], self.relative_pose[frame1]], dim=0)
+
     def get_all_references(self, num_samples: int = 1):
         return (self.dof_positions.clone().unsqueeze(0).expand(num_samples, -1, -1), 
                 self.dof_velocities.clone().unsqueeze(0).expand(num_samples, -1, -1),

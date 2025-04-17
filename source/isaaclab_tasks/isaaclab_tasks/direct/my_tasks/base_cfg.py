@@ -31,39 +31,34 @@ MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions"
 
 
 @configclass
-class EnvCfg(DirectRLEnvCfg):
+class Cfg(DirectRLEnvCfg):
     # env
-    episode_length_s = 10.0 # 10s * 30fps = 300 frames
-    decimation = 2
-
     observation_space: int = MISSING
     action_space: int = MISSING
     state_space: int = 0
     num_amp_observations: int = 2
     amp_observation_space: int = MISSING
+    relative_pose_observation: int = MISSING
 
-    action_clip: list = [-0.1, 0.1]
-    init_root_height: float = 0.15
-    
     # reward
     reward: list = []
     
     # motions
+    action_clip: list = [-0.1, 0.1]
+    init_root_height: float = 0.15
     early_termination: bool = True
     key_body_names: list = MISSING
     termination_bodies: list = MISSING
     termination_heights: list = MISSING
     reference_body: str = MISSING
-    sync_motion = False # apply reference actions instead of predicted actions to robots
-    reset_strategy: str = "default"  # default, random, random-start
-    
-    """Strategy to be followed when resetting each environment (humanoid's pose and joint states).
-    * default: pose and joint states are set to the initial state of the asset.
-    * random: pose and joint states are set by sampling motions at random, uniform times.
-    * random-start: pose and joint states are set by sampling motion at the start (time zero).
-    """
+    sync_motion: bool = False # apply reference actions instead of predicted actions to robots
+    reset_strategy: str = "default"  # default, random, random-start (time zero from dataset)
+    require_relative_pose: bool = False # require precompute relative body positions between two robots
+
 
     # simulation
+    episode_length_s = 10.0 # 10s * 30fps = 300 frames
+    decimation = 2
     dt = 1 / 60
     sim: SimulationCfg = SimulationCfg(
         dt=dt,
@@ -120,11 +115,11 @@ class EnvCfg(DirectRLEnvCfg):
         }
     )
 
-class EnvCfg1Robot(EnvCfg):
+class EnvCfg1Robot(Cfg):
     robot1: ArticulationCfg = MISSING
     motion_file_1: str = MISSING
 
-class EnvCfg2Robots(EnvCfg):
+class EnvCfg2Robots(Cfg):
     robot1: ArticulationCfg = MISSING
     robot2: ArticulationCfg = MISSING
     motion_file_1: str = MISSING
@@ -204,40 +199,3 @@ class EnvCfg2RobotHumanoid(EnvCfg2Robots):
     amp_observation_space = observation_space
     key_body_names = ["right_hand", "left_hand", "right_foot", "left_foot"]
     reference_body = "torso"
-
-@configclass
-class AmpInterHumanEnvCfg2Robots(EnvCfg2RobotsSMPL):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
-    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/1_2.npz")
-
-    reward = ["ones"]
-    reset_strategy = "random"
-
-@configclass
-class AmpInterHumanEnvCfg(EnvCfg1RobotSMPL):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
-
-    reward = ["ones"]
-    reset_strategy = "random"
-    
-@configclass
-class PPOEnvCfg(EnvCfg1RobotSMPL):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
-    robot1 = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
-
-    reward = ["com acc"]
-    reset_strategy = "default"
-
-@configclass
-class PPOHumanoidEnvCfg(EnvCfg1RobotHumanoid):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid/humanoid_walk.npz")
-    reward = ["com_acc", "stand_forward"]
-    reset_strategy = "default"
-
-    # action_clip = [None, None]
-    terrain = "uneven"
-
-    init_root_height = 2.0
-    episode_length_s = 30.0
-
-    scene = InteractiveSceneCfg(num_envs=16, env_spacing=2.0, replicate_physics=True)
