@@ -283,11 +283,7 @@ class Env(DirectRLEnv):
                 self._motion_loader_2.get_relative_pose(frame=self.episode_length_buf) if self.cfg.require_relative_pose else None
             )
 
-        # check for NaN in observations
-        # if torch.isnan(obs_1).any() or torch.isnan(obs_2).any():
-        #     print("NaN in observation, stop training.")
-        #     sys.exit(0)
-        
+
         # detect NaN in observations
         nan_envs_1 = check_nan(obs_1)
         if self.robot2: 
@@ -310,7 +306,7 @@ class Env(DirectRLEnv):
                     self.robot1.data.body_quat_w[nan_env_ids, self.ref_body_index],
                     self.robot1.data.body_lin_vel_w[nan_env_ids, self.ref_body_index],
                     self.robot1.data.body_ang_vel_w[nan_env_ids, self.ref_body_index],
-                    self._motion_loader_1.get_relative_pose(frame=self.episode_length_buf) if self.cfg.require_relative_pose else None
+                    self._motion_loader_1.get_relative_pose(frame=self.episode_length_buf[nan_env_ids]) if self.cfg.require_relative_pose else None
                 )
                 if self.robot2: 
                     obs_2[nan_env_ids] = compute_obs(
@@ -320,7 +316,7 @@ class Env(DirectRLEnv):
                         self.robot2.data.body_quat_w[nan_env_ids, self.ref_body_index],
                         self.robot2.data.body_lin_vel_w[nan_env_ids, self.ref_body_index],
                         self.robot2.data.body_ang_vel_w[nan_env_ids, self.ref_body_index],
-                        self._motion_loader_2.get_relative_pose(frame=self.episode_length_buf) if self.cfg.require_relative_pose else None
+                        self._motion_loader_2.get_relative_pose(frame=self.episode_length_buf[nan_env_ids]) if self.cfg.require_relative_pose else None
                     )
         # end detect NaN
 
