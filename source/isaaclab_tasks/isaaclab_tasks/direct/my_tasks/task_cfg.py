@@ -24,7 +24,7 @@ class AmpInterHumanEnvCfg2Robots(EnvCfg2RobotsSMPL):
     require_relative_pose = True
     relative_pose_observation = 24 * 3
     observation_space = 2 * (151 + relative_pose_observation)
-    amp_observation_space =  2 * 151
+    amp_observation_space =  2 * (151 + relative_pose_observation)
 
 @configclass
 class AmpInterHumanEnvCfg(EnvCfg1RobotSMPL):
@@ -49,10 +49,20 @@ class PPOHumanoidEnvCfg(EnvCfg1RobotHumanoid):
     reward = ["com_acc", "stand_forward"]
     reset_strategy = "default"
 
-    # action_clip = [None, None]
     terrain = "uneven"
-
     init_root_height = 2.0
     episode_length_s = 30.0
 
     scene = InteractiveSceneCfg(num_envs=16, env_spacing=2.0, replicate_physics=True)
+
+
+### HRL
+@configclass
+class HRLInterHumanEnvCfg(EnvCfg1RobotSMPL):
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/6929_1.npz")
+
+    reward = ["com_acc"]
+    reset_strategy = "random_start"
+
+    terrain = "uneven"
+    init_root_height = 2.0

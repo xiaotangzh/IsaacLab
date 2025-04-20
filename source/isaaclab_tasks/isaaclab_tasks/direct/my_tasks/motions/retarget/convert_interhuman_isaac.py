@@ -34,7 +34,6 @@ import argparse
 import pickle
 
 def run(in_file: str, SKMotion_out_file = None, person: str = "person1"):
-
     robot_cfg = {
         "mesh": False,
         "model": "smpl",
@@ -44,28 +43,6 @@ def run(in_file: str, SKMotion_out_file = None, person: str = "person1"):
         "geom_params": {},
         "actuator_params": {},
     }
-    # robot_cfg = {
-    #     "mesh": False,
-    #     "rel_joint_lm": True,
-    #     "upright_start": True,
-    #     "remove_toe": False,
-    #     "real_weight": True,
-    #     "real_weight_porpotion_capsules": True,
-    #     "real_weight_porpotion_boxes": True,
-    #     "replace_feet": True,
-    #     "masterfoot": False,
-    #     "big_ankle": True,
-    #     "freeze_hand": False,
-    #     "box_body": False,
-    #     "master_range": 50,
-    #     "body_params": {},
-    #     "joint_params": {},
-    #     "geom_params": {},
-    #     "actuator_params": {},
-    #     "model": "smpl",
-    #     "sim": "isaacgym",
-    # }
-
     smpl_local_robot = LocalRobot(
         robot_cfg,
         data_dir="./smpl",
@@ -75,12 +52,8 @@ def run(in_file: str, SKMotion_out_file = None, person: str = "person1"):
     with open(in_file, 'rb') as file:
         amass_data = pickle.load(file)
 
-    double = False
-
-    # mujoco_joint_names = ['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
     target_joint_names = SMPL_MUJOCO_NAMES
     source_joint_names = SMPL_BONE_ORDER_NAMES
-
 
     # start retargeting
     key_name = person # ["person1", "person2"]
@@ -121,41 +94,38 @@ def run(in_file: str, SKMotion_out_file = None, person: str = "person1"):
     batch_size = pose_aa.shape[0]
     pose_aa = np.concatenate([pose_aa[:, :66], np.zeros((batch_size, 6))], axis=1) # 23*3 joints + zero values L/R hands = 24 joints
     pose_aa_mj = pose_aa.reshape(-1, 24, 3)[..., smpl_2_mujoco, :].copy()
+    pose_quat = sRot.from_rotvec(pose_aa_mj.reshape(-1, 3)).as_quat().reshape(batch_size, 24, 4)
 
-    num = 1
-    if double:
-        num = 2
-    for idx in range(num):
-        pose_quat = sRot.from_rotvec(pose_aa_mj.reshape(-1, 3)).as_quat().reshape(batch_size, 24, 4)
+    gender_number, beta[:], gender = [0], 0, "neutral"
+    print("using neutral model")
 
-        gender_number, beta[:], gender = [0], 0, "neutral"
-        print("using neutral model")
+    smpl_local_robot.load_from_skeleton(betas=torch.from_numpy(beta[None,]), gender=gender_number, objs_info=None)
+    smpl_local_robot.write_xml("../assets/smpl_humanoid.xml")
+    skeleton_tree = SkeletonTree.from_mjcf("../assets/smpl_humanoid.xml")
 
-        smpl_local_robot.load_from_skeleton(betas=torch.from_numpy(beta[None,]), gender=gender_number, objs_info=None)
-        smpl_local_robot.write_xml("../assets/smpl_humanoid.xml")
-        skeleton_tree = SkeletonTree.from_mjcf("../assets/smpl_humanoid.xml")
-        #TODO:
-        # skeleton_tree = SkeletonTree.from_mjcf("../assets/amp_humanoid.xml")
-        # print(skeleton_tree.node_names, skeleton_tree.num_joints)
-        # print(pose_quat.shape)
+    root_trans_offset = torch.from_numpy(root_trans) + skeleton_tree.local_translation[0]
 
-        root_trans_offset = torch.from_numpy(root_trans) + skeleton_tree.local_translation[0]
+    new_sk_state = SkeletonState.from_rotation_and_root_translation(
+        skeleton_tree,  # This is the wrong skeleton tree (location wise) here, but it's fine since we only use the parent relationship here. 
+        torch.from_numpy(pose_quat),
+        root_trans_offset,
+        is_local=True)
+    
+    if robot_cfg['upright_start']:
+        pose_quat_global = (sRot.from_quat(new_sk_state.global_rotation.reshape(-1, 4).numpy()) * sRot.from_quat([0.5, 0.5, 0.5, 0.5]).inv()).as_quat().reshape(B, -1, 4)  # should fix pose_quat as well here...
 
-        new_sk_state = SkeletonState.from_rotation_and_root_translation(
-            skeleton_tree,  # This is the wrong skeleton tree (location wise) here, but it's fine since we only use the parent relationship here. 
-            torch.from_numpy(pose_quat),
-            root_trans_offset,
-            is_local=True)
-        
-        if robot_cfg['upright_start']:
-            pose_quat_global = (sRot.from_quat(new_sk_state.global_rotation.reshape(-1, 4).numpy()) * sRot.from_quat([0.5, 0.5, 0.5, 0.5]).inv()).as_quat().reshape(B, -1, 4)  # should fix pose_quat as well here...
+        new_sk_state = SkeletonState.from_rotation_and_root_translation(skeleton_tree, torch.from_numpy(pose_quat_global), root_trans_offset, is_local=False)
+    
+    # save tpose
+    # zero_pose = SkeletonState.zero_pose(skeleton_tree)
+    # zero_pose.to_file("./tpose/smpl.npy")
 
-            new_sk_state = SkeletonState.from_rotation_and_root_translation(skeleton_tree, torch.from_numpy(pose_quat_global), root_trans_offset, is_local=False)
-        
-        # save as SkeletonMotion
-        if SKMotion_out_file:
-            target_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=int(fps))
-            return target_motion
+    # save as SkeletonMotion
+    if SKMotion_out_file:
+        target_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=int(fps))
+        target_motion.to_file(SKMotion_out_file)
+        return target_motion
+    
 
 def draw3D(tensor):
     import numpy as np

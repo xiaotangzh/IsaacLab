@@ -18,7 +18,7 @@ from utils.utils import *
 
 # parse the arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with skrl.")
-parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
+parser.add_argument("--num_envs", type=int, default=16, help="Number of environments to simulate.")
 parser.add_argument("--steps", type=int, default=80000, help="Number of training steps.")
 parser.add_argument("--task", type=str, default=None, help="Name of the task.")
 parser.add_argument("--name", type=str, default="", help="Name of the experiment.")
@@ -50,9 +50,11 @@ env = wrap_env(env)
 from agents.amp_2robots import AMP, AMP_DEFAULT_CONFIG
 from agents.moe import MOE, MOE_DEFAULT_CONFIG
 from agents.ppo import PPO, PPO_DEFAULT_CONFIG
+from agents.hrl import HRL
 from models.amp import *
 from models.moe import *
 from models.ppo import *
+from models.hrl import *
 agent, agent_cfg = None, None
 
 # IsaacLab AMP default configurations
@@ -62,8 +64,7 @@ if "AMP" in args.task:
     # IsaacLab AMP default configurations
     agent_cfg["state_preprocessor"] = RunningStandardScaler
     agent_cfg["state_preprocessor_kwargs"] = {"size": env.observation_space}
-    agent_cfg["value_preprocessor_1"] = RunningStandardScaler 
-    agent_cfg["value_preprocessor_2"] = RunningStandardScaler 
+    agent_cfg["value_preprocessor"] = RunningStandardScaler 
     agent_cfg["value_preprocessor_kwargs"] = {"size": 1}
     agent_cfg["amp_state_preprocessor"] = RunningStandardScaler
     agent_cfg["amp_state_preprocessor_kwargs"] = {"size": env.amp_observation_size}
@@ -151,21 +152,37 @@ elif "PPO" in args.task:
                 action_space=env.action_space,
                 device=device)
     
-elif "MOE" in args.task:
-    agent_cfg = MOE_DEFAULT_CONFIG.copy()
+elif "HRL" in args.task:
+    agent_cfg = AMP_DEFAULT_CONFIG.copy()
+    
+    # IsaacLab AMP default configurations
+    agent_cfg["state_preprocessor"] = RunningStandardScaler
+    agent_cfg["state_preprocessor_kwargs"] = {"size": env.observation_space}
+    agent_cfg["value_preprocessor"] = RunningStandardScaler 
+    agent_cfg["value_preprocessor_kwargs"] = {"size": 1}
+    agent_cfg["amp_state_preprocessor"] = RunningStandardScaler
+    agent_cfg["amp_state_preprocessor_kwargs"] = {"size": env.amp_observation_size}
+    agent_cfg["discriminator_batch_size"] = 4096
+    agent_cfg["clip_predicted_values"] = True
+    agent_cfg["task_reward_weight"] = 1.0
+    
+    # memory configuration
     rollout_memory = RandomMemory(
         memory_size=agent_cfg["rollouts"], 
         num_envs=env.num_envs, 
         device=device  
     )
+    motion_dataset = RandomMemory(
+        memory_size=200000,
+        device=device
+    )
+    reply_buffer = RandomMemory(
+        memory_size=1000000, 
+        # num_envs must be 1 to avoid memory samples shape errors
+        device=device,
+    )
     
     # custom configurations
-    agent_cfg["gating_size"] = 32
-    agent_cfg["num_experts"] = 5
-    agent_cfg["gatings_size"] = agent_cfg["num_experts"] * agent_cfg["gating_size"]
-    agent_cfg["sub_action_size"] = {"Pivot": 15, "LeftArm": 15, "RightArm": 15, "LeftLimb": 12, "RightLimb": 12}
-    agent_cfg["moe_batch_size"] = 32
-
     if args.lr: agent_cfg["learning_rate"] = args.lr
     agent_cfg["experiment"] = {
         "directory": os.path.join("logs", args.task), 
@@ -180,12 +197,17 @@ elif "MOE" in args.task:
         }
     }
     
-    models = instantiate_MOE(env, params=args.params, cfg=agent_cfg, device=device)
-    agent = MOE(models=models,
+    # instantiate the models
+    models = instantiate_HRL(env, params=args.params, device=device)
+    agent = HRL(models=models,
                 memory=rollout_memory,  
                 cfg=agent_cfg,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
+                amp_observation_space=env.amp_observation_size,
+                motion_dataset=motion_dataset,
+                reply_buffer=reply_buffer,
+                collect_reference_motions=env.collect_reference_motions,
                 device=device)
 
 # configure and instantiate the RL trainer

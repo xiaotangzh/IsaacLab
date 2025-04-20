@@ -1,6 +1,6 @@
 from convert_interhuman_isaac import run
 from motion_lib import MotionLib
-from motion_lib import animate3D
+from visualization import animate3D
 import torch
 import argparse
 import numpy as np
@@ -11,7 +11,7 @@ import sys
 def convert(path, file_name, person: str = "person1", visualize: bool = False):
     SKMotion = run(
         in_file=f"in_files/{file_name}.pkl",
-        SKMotion_out_file=f"{path}/{file_name}.npy",
+        SKMotion_out_file=f"out_files/InterHuman_SKMotion_{file_name}_{person}.npy",
         person=person
     )
     
@@ -20,7 +20,7 @@ def convert(path, file_name, person: str = "person1", visualize: bool = False):
     
     # check SkeletonMotion
     print(SKMotion.global_transformation.shape, SKMotion.local_transformation.shape)
-    # animate3D(SKMotion.global_translation)
+    # if visualize: animate3D(SKMotion.global_translation)
     # sys.exit(0)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -56,9 +56,7 @@ def convert(path, file_name, person: str = "person1", visualize: bool = False):
     # print_dict(data)
     # print(data['dof_positions'].shape)
     
-    if visualize:
-        animate3D(data['body_positions'], highlight_joint=0, q=data['body_rotations'][:,0], w_last=w_last)
-        # animate3D(data['dof_positions'].reshape(-1, 24, 3))
+    if visualize: animate3D(data['body_positions'], highlight_joint=0, q=data['body_rotations'][:,0], w_last=w_last)
     return data
 
 def print_dict(data):

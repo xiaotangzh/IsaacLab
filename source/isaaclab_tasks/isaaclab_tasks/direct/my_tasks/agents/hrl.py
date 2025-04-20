@@ -80,7 +80,7 @@ AMP_DEFAULT_CONFIG = {
 # fmt: on
 
 
-class AMP(BaseAgent):
+class HRL(BaseAgent):
     def __init__(
         self,
         models: Mapping[str, Model],
@@ -148,26 +148,26 @@ class AMP(BaseAgent):
         self.collect_observation = collect_observation
 
         # models
-        self.policy1 = self.models.get("policy1", None)
-        self.value1 = self.models.get("value1", None)
-        self.policy2 = self.models.get("policy2", None)
-        self.value2 = self.models.get("value2", None)
+        self.policy = self.models.get("policy", None)
+        self.value = self.models.get("value", None)
+        self.policy_low = self.models.get("low level policy", None)
+        self.value_low = self.models.get("low level value", None)
         self.discriminator = self.models.get("discriminator", None)
 
         # checkpoint models
-        self.checkpoint_modules["policy1"] = self.policy1
-        self.checkpoint_modules["value1"] = self.value1
-        self.checkpoint_modules["policy2"] = self.policy2
-        self.checkpoint_modules["value2"] = self.value2
+        self.checkpoint_modules["policy"] = self.policy
+        self.checkpoint_modules["value"] = self.value
+        self.checkpoint_modules["low level policy"] = self.policy_low
+        self.checkpoint_modules["low level value"] = self.value_low
         self.checkpoint_modules["discriminator"] = self.discriminator
 
         # broadcast models' parameters in distributed runs
         if config.torch.is_distributed:
             logger.info(f"Broadcasting models' parameters")
-            if self.policy1 is not None:
-                self.policy1.broadcast_parameters()
-            if self.value1 is not None:
-                self.value1.broadcast_parameters()
+            if self.policy is not None:
+                self.policy.broadcast_parameters()
+            if self.value is not None:
+                self.value.broadcast_parameters()
             if self.discriminator is not None:
                 self.discriminator.broadcast_parameters()
 
@@ -188,10 +188,12 @@ class AMP(BaseAgent):
 
         self._learning_rate = self.cfg["learning_rate"]
         self._learning_rate_scheduler = self.cfg["learning_rate_scheduler"]
+        self._learning_rate_low = self.cfg["learning_rate"]
+        self._learning_rate_scheduler_low = self.cfg["learning_rate_scheduler"]
 
         self._state_preprocessor = self.cfg["state_preprocessor"]
-        self._value_preprocessor_1 = self.cfg["value_preprocessor"]
-        self._value_preprocessor_2 = self.cfg["value_preprocessor"]
+        self._value_preprocessor = self.cfg["value_preprocessor"]
+        self._value_low_preprocessor = self.cfg["value_preprocessor"]
         self._amp_state_preprocessor = self.cfg["amp_state_preprocessor"]
 
         self._discount_factor = self.cfg["discount_factor"]
@@ -219,15 +221,15 @@ class AMP(BaseAgent):
         self._device_type = torch.device(device).type
         if version.parse(torch.__version__) >= version.parse("2.4"):
             self.scaler = torch.amp.GradScaler(device=self._device_type, enabled=self._mixed_precision)
+            self.scaler_low = torch.amp.GradScaler(device=self._device_type, enabled=self._mixed_precision)
         else:
             self.scaler = torch.cuda.amp.GradScaler(enabled=self._mixed_precision)
+            self.scaler_low = torch.cuda.amp.GradScaler(enabled=self._mixed_precision)
 
         # set up optimizer and learning rate scheduler
-        if self.policy1 is not None and self.value1 is not None and self.policy2 is not None and self.value2 is not None and self.discriminator is not None:
+        if self.policy is not None and self.value is not None and self.discriminator is not None:
             self.optimizer = torch.optim.Adam(
-                itertools.chain(self.policy1.parameters(), self.value1.parameters(), 
-                                self.policy2.parameters(), self.value2.parameters(), 
-                                self.discriminator.parameters()),
+                itertools.chain(self.policy.parameters(), self.value.parameters(), self.discriminator.parameters()),
                 lr=self._learning_rate,
             )
             if self._learning_rate_scheduler is not None:
@@ -235,7 +237,18 @@ class AMP(BaseAgent):
                     self.optimizer, **self.cfg["learning_rate_scheduler_kwargs"]
                 )
 
+            # low level
+            self.optimizer_low = torch.optim.Adam(
+                itertools.chain(self.policy_low.parameters(), self.value_low.parameters()),
+                lr=self._learning_rate_low,
+            )
+            if self._learning_rate_scheduler_low is not None:
+                self.scheduler_low = self._learning_rate_scheduler_low(
+                    self.optimizer_low, **self.cfg["learning_rate_scheduler_kwargs"]
+                )
+
             self.checkpoint_modules["optimizer"] = self.optimizer
+            self.checkpoint_modules["low level optimizer"] = self.optimizer_low
 
         # set up preprocessors
         if self._state_preprocessor:
@@ -244,14 +257,17 @@ class AMP(BaseAgent):
         else:
             self._state_preprocessor = self._empty_preprocessor
 
-        if self._value_preprocessor_1 and self._value_preprocessor_2:
-            self._value_preprocessor_1 = self._value_preprocessor_1(**self.cfg["value_preprocessor_kwargs"])
-            self._value_preprocessor_2 = self._value_preprocessor_2(**self.cfg["value_preprocessor_kwargs"])
-            self.checkpoint_modules["value_preprocessor_1"] = self._value_preprocessor_1
-            self.checkpoint_modules["value_preprocessor_2"] = self._value_preprocessor_2
+        if self._value_preprocessor:
+            self._value_preprocessor = self._value_preprocessor(**self.cfg["value_preprocessor_kwargs"])
+            self.checkpoint_modules["value_preprocessor"] = self._value_preprocessor
         else:
-            self._value_preprocessor_1 = self._empty_preprocessor
-            self._value_preprocessor_2 = self._empty_preprocessor
+            self._value_preprocessor = self._empty_preprocessor
+
+        if self._value_low_preprocessor:
+            self._value_low_preprocessor = self._value_low_preprocessor(**self.cfg["value_preprocessor_kwargs"])
+            self.checkpoint_modules["low level value_preprocessor"] = self._value_low_preprocessor
+        else:
+            self._value_preprocessor = self._empty_preprocessor
 
         if self._amp_state_preprocessor:
             self._amp_state_preprocessor = self._amp_state_preprocessor(**self.cfg["amp_state_preprocessor_kwargs"])
@@ -272,13 +288,19 @@ class AMP(BaseAgent):
             self.memory.create_tensor(name="rewards", size=1, dtype=torch.float32)
             self.memory.create_tensor(name="terminated", size=1, dtype=torch.bool)
             self.memory.create_tensor(name="truncated", size=1, dtype=torch.bool)
-            self.memory.create_tensor(name="log_prob", size=2, dtype=torch.float32)
-            self.memory.create_tensor(name="values", size=2, dtype=torch.float32)
-            self.memory.create_tensor(name="returns", size=2, dtype=torch.float32)
-            self.memory.create_tensor(name="advantages", size=2, dtype=torch.float32)
+            self.memory.create_tensor(name="log_prob", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="values", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="returns", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="advantages", size=1, dtype=torch.float32)
             
             self.memory.create_tensor(name="amp_states", size=self.amp_observation_space, dtype=torch.float32)
-            self.memory.create_tensor(name="next_values", size=2, dtype=torch.float32)
+            self.memory.create_tensor(name="next_values", size=1, dtype=torch.float32)
+
+            self.memory.create_tensor(name="log_prob_low", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="values_low", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="next_values_low", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="returns_low", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="advantages_low", size=1, dtype=torch.float32)
 
         self.tensors_names = [
             "states",
@@ -292,6 +314,11 @@ class AMP(BaseAgent):
             "advantages",
             "amp_states",
             "next_values",
+            "log_prob_low",
+            "values_low",
+            "next_values_low",
+            "returns_low",
+            "advantages_low",
         ]
 
         # create tensors for motion dataset and reply buffer
@@ -305,7 +332,7 @@ class AMP(BaseAgent):
 
         # create temporary variables needed for storage and computation
         self._current_log_prob = None
-        self._current_log_prob_2 = None
+        self._current_log_prob_low = None
         self._current_states = None
 
     def act(self, states: torch.Tensor, timestep: int, timesteps: int) -> torch.Tensor:
@@ -325,14 +352,17 @@ class AMP(BaseAgent):
         if self._current_states is not None:
             states = self._current_states
 
-        states1, states2 = torch.chunk(self._state_preprocessor(states), 2, dim=-1)
+        states = self._state_preprocessor(states)
 
         # sample stochastic actions
         with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-            actions1, log_prob1, outputs1 = self.policy1.act({"states": states1}, role="policy")
-            actions2, log_prob2, outputs2 = self.policy2.act({"states": states2}, role="policy")
-            self._current_log_prob = torch.cat([log_prob1, log_prob2], dim=-1)
-        return torch.cat([actions1, actions2], dim=-1), torch.cat([log_prob1, log_prob2], dim=-1), outputs1 | outputs2
+            actions, log_prob, outputs = self.policy.act({"states": states}, role="policy")
+            self._current_log_prob = log_prob
+
+            actions, log_prob, outputs = self.policy_low.act({"states": states, "actions": actions}, role="policy")
+            self._current_log_prob_low = log_prob
+
+        return actions, log_prob, outputs
 
     def record_transition(
         self,
@@ -375,25 +405,20 @@ class AMP(BaseAgent):
             states, actions, rewards, next_states, terminated, truncated, infos, timestep, timesteps
         )
 
-        states1, states2 = torch.chunk(self._state_preprocessor(states), 2, dim=-1)
-        next_states1, next_states2 = torch.chunk(self._state_preprocessor(next_states), 2, dim=-1)
-
         if self.memory is not None:
             amp_states = infos["amp_obs"]
 
             # reward shaping
             if self._rewards_shaper is not None:
                 rewards = self._rewards_shaper(rewards, timestep, timesteps)
-            
+
             # compute values
             with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-                values1, _, _ = self.value1.act({"states": states1}, role="value")
-                values1 = self._value_preprocessor_1(values1, inverse=True)
+                values, _, _ = self.value.act({"states": self._state_preprocessor(states)}, role="value")
+                values = self._value_preprocessor(values, inverse=True)
 
-                values2, _, _ = self.value2.act({"states": states2}, role="value")
-                values2 = self._value_preprocessor_2(values2, inverse=True)
-
-                values = torch.cat([values1, values2], dim=-1)
+                values_low, _, _ = self.value_low.act({"states": self._state_preprocessor(states), "actions": actions}, role="value")
+                values_low = self._value_low_preprocessor(values_low, inverse=True)
 
             # time-limit (truncation) bootstrapping
             if self._time_limit_bootstrap:
@@ -401,26 +426,14 @@ class AMP(BaseAgent):
 
             # compute next values
             with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-                next_values_1, _, _ = self.value1.act({"states": next_states1}, role="value")
-                next_values_1 = self._value_preprocessor_1(next_values_1, inverse=True)
-                next_values_1 *= terminated.view(-1, 1).logical_not()
+                next_values, _, _ = self.value.act({"states": self._state_preprocessor(next_states)}, role="value")
+                next_values = self._value_preprocessor(next_values, inverse=True)
+                next_values *= terminated.view(-1, 1).logical_not()
 
-                next_values_2, _, _ = self.value2.act({"states": next_states2}, role="value")
-                next_values_2 = self._value_preprocessor_2(next_values_2, inverse=True)
-                next_values_2 *= terminated.view(-1, 1).logical_not()
-
-                next_values = torch.cat([next_values_1, next_values_2], dim=-1)
-
-            # print(states.shape,
-            #       actions.shape,
-            #       rewards.shape,
-            #       next_states.shape,
-            #       terminated.shape,
-            #       truncated.shape,
-            #       self._current_log_prob.shape,
-            #       values.shape,
-            #       amp_states.shape,
-            #       next_values.shape)
+                next_actions, _, _ = self.policy.act({"states": self._state_preprocessor(next_states),}, role="policy")
+                next_values_low, _, _ = self.value_low.act({"states": self._state_preprocessor(next_states), "actions": next_actions}, role="value")
+                next_values_low = self._value_low_preprocessor(next_values_low, inverse=True)
+                next_values_low *= terminated.view(-1, 1).logical_not()
 
             self.memory.add_samples(
                 states=states,
@@ -430,9 +443,12 @@ class AMP(BaseAgent):
                 terminated=terminated,
                 truncated=truncated,
                 log_prob=self._current_log_prob,
+                log_prob_low=self._current_log_prob_low,
                 values=values,
                 amp_states=amp_states,
                 next_values=next_values,
+                values_low=values_low,
+                next_values_low=next_values_low,
             )
             for memory in self.secondary_memories:
                 memory.add_samples(
@@ -443,9 +459,12 @@ class AMP(BaseAgent):
                     terminated=terminated,
                     truncated=truncated,
                     log_prob=self._current_log_prob,
+                    log_prob_low=self._current_log_prob_low,
                     values=values,
                     amp_states=amp_states,
                     next_values=next_values,
+                    values_low=values_low,
+                    next_values_low=next_values_low,
                 )
 
     def pre_interaction(self, timestep: int, timesteps: int) -> None:
@@ -542,55 +561,46 @@ class AMP(BaseAgent):
             amp_logits, _, _ = self.discriminator.act(
                 {"states": self._amp_state_preprocessor(amp_states)}, role="discriminator"
             )
-
-            style_rewards = -torch.log(
+            style_reward = -torch.log(
                 torch.maximum(1 - 1 / (1 + torch.exp(-amp_logits)), torch.tensor(0.0001, device=self.device))
             )
+            style_reward *= self._discriminator_reward_scale
+            style_reward = style_reward.view(rewards.shape)
 
-            style_rewards *= self._discriminator_reward_scale
-            style_rewards = style_rewards.view(rewards.shape)
-
-        combined_rewards = self._task_reward_weight * rewards + self._style_reward_weight * style_rewards
+        task_rewards = self._task_reward_weight * rewards
+        style_rewards = self._style_reward_weight * style_reward
 
         # compute returns and advantages
         values = self.memory.get_tensor_by_name("values")
         next_values = self.memory.get_tensor_by_name("next_values")
-
-        values1, values2 = torch.chunk(values, 2, dim=-1)
-        next_values_1, next_values_2 = torch.chunk(next_values, 2, dim=-1)
-
-        # using same rewards to compute different returns and advantages
-        returns1, advantages1 = compute_gae(
-            rewards=combined_rewards,
+        returns, advantages = compute_gae(
+            rewards=style_rewards,
             dones=self.memory.get_tensor_by_name("terminated") | self.memory.get_tensor_by_name("truncated"),
-            values=values1,
-            next_values=next_values_1,
-            discount_factor=self._discount_factor,
-            lambda_coefficient=self._lambda,
-        )
-        returns2, advantages2 = compute_gae(
-            rewards=combined_rewards,
-            dones=self.memory.get_tensor_by_name("terminated") | self.memory.get_tensor_by_name("truncated"),
-            values=values2,
-            next_values=next_values_2,
+            values=values,
+            next_values=next_values,
             discount_factor=self._discount_factor,
             lambda_coefficient=self._lambda,
         )
 
-        values1 = self._value_preprocessor_1(values1, train=True)
-        values2 = self._value_preprocessor_2(values2, train=True)
-        values = torch.cat([values1, values2], dim=-1)
-
-        #todo why train preprocessor twice ?
-        returns1 = self._value_preprocessor_1(returns1, train=True)
-        returns2 = self._value_preprocessor_2(returns2, train=True)
-        returns = torch.cat([returns1, returns2], dim=-1)
-
-        advantages = torch.cat([advantages1, advantages2], dim=-1)
-
-        self.memory.set_tensor_by_name("values", values)
-        self.memory.set_tensor_by_name("returns", returns) 
+        self.memory.set_tensor_by_name("values", self._value_preprocessor(values, train=True))
+        self.memory.set_tensor_by_name("returns", self._value_preprocessor(returns, train=True)) 
         self.memory.set_tensor_by_name("advantages", advantages)
+
+        # compute low level critic returns and advantages
+        values_low = self.memory.get_tensor_by_name("values_low")
+        next_values_low = self.memory.get_tensor_by_name("next_values_low")
+        returns_low, advantages_low = compute_gae(
+            rewards=task_rewards,
+            dones=self.memory.get_tensor_by_name("terminated") | self.memory.get_tensor_by_name("truncated"),
+            values=values_low,
+            next_values=next_values_low,
+            discount_factor=self._discount_factor,
+            lambda_coefficient=self._lambda,
+        )
+
+        self.memory.set_tensor_by_name("values_low", self._value_low_preprocessor(values_low, train=True))
+        self.memory.set_tensor_by_name("returns_low", self._value_low_preprocessor(returns_low, train=True)) 
+        self.memory.set_tensor_by_name("advantages_low", advantages_low)
 
         # sample mini-batches from memory
         sampled_batches = self.memory.sample_all(names=self.tensors_names, mini_batches=self._mini_batches)
@@ -606,21 +616,18 @@ class AMP(BaseAgent):
         else:
             sampled_replay_batches = [[batches[self.tensors_names.index("amp_states")]] for batches in sampled_batches]
 
-
-        cumulative_policy_loss_1 = 0
-        cumulative_entropy_loss_1 = 0
-        cumulative_value_loss_1 = 0
-
-        cumulative_policy_loss_2 = 0
-        cumulative_entropy_loss_2 = 0
-        cumulative_value_loss_2 = 0
-
+        cumulative_policy_loss = 0
+        cumulative_entropy_loss = 0
+        cumulative_value_loss = 0
+        cumulative_policy_loss_low = 0
+        cumulative_entropy_loss_low = 0
+        cumulative_value_loss_low = 0
         cumulative_discriminator_loss = 0
 
         # learning epochs
         for epoch in range(self._learning_epochs):
-            kl_divergences_1 = []
-            kl_divergences_2 = []
+            kl_divergences = []
+            kl_divergences_low = []
 
             # mini-batches loop
             for batch_index, (
@@ -635,95 +642,101 @@ class AMP(BaseAgent):
                 sampled_advantages,
                 sampled_amp_states,
                 _,
+                sampled_log_prob_low,
+                sampled_values_low,
+                sampled_next_values_low,
+                sampled_returns_low,
+                sampled_advantages_low
             ) in enumerate(sampled_batches):
 
                 with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
 
-                    sampled_states_1, sampled_states_2 = torch.chunk(self._state_preprocessor(sampled_states, train=True), 2, dim=-1)
-                    sampled_actions_1, sampled_actions_2 = torch.chunk(sampled_actions, 2, dim=-1)
-                    sampled_log_prob_1, sampled_log_prob_2 = torch.chunk(sampled_log_prob, 2, dim=-1)
-                    sampled_advantages_1, sampled_advantages_2 = torch.chunk(sampled_advantages, 2, dim=-1)
-                    sampled_values_1, sampled_values_2 = torch.chunk(sampled_values, 2, dim=-1)
-                    sampled_returns_1, sampled_returns_2 = torch.chunk(sampled_returns, 2, dim=-1)
+                    sampled_states = self._state_preprocessor(sampled_states, train=True)
 
-                    _, next_log_prob_1, _ = self.policy1.act(
-                        {"states": sampled_states_1, "taken_actions": sampled_actions_1}, role="policy"
+                    _, next_log_prob, _ = self.policy.act(
+                        {"states": sampled_states, "taken_actions": sampled_actions}, role="policy"
                     )
-                    _, next_log_prob_2, _ = self.policy2.act(
-                        {"states": sampled_states_2, "taken_actions": sampled_actions_2}, role="policy"
+
+                    _, next_log_prob_low, _ = self.policy.act(
+                        {"states": sampled_states, "actions": sampled_actions}, role="policy"
                     )
 
                     # compute approximate KL divergence
                     with torch.no_grad():
-                        ratio1 = next_log_prob_1 - sampled_log_prob_1
-                        kl_divergence_1 = ((torch.exp(ratio1) - 1) - ratio1).mean()
-                        kl_divergences_1.append(kl_divergence_1)
+                        ratio = next_log_prob - sampled_log_prob
+                        kl_divergence = ((torch.exp(ratio) - 1) - ratio).mean()
+                        kl_divergences.append(kl_divergence)
 
-                        ratio2 = next_log_prob_2 - sampled_log_prob_2
-                        kl_divergence_2 = ((torch.exp(ratio2) - 1) - ratio2).mean()
-                        kl_divergences_2.append(kl_divergence_2)
+                        # low level
+                        ratio = next_log_prob_low - sampled_log_prob_low
+                        kl_divergence = ((torch.exp(ratio) - 1) - ratio).mean()
+                        kl_divergences_low.append(kl_divergence)
 
                     # compute entropy loss
                     if self._entropy_loss_scale:
-                        entropy_loss_1 = -self._entropy_loss_scale * self.policy1.get_entropy(role="policy").mean()
-                        entropy_loss_2 = -self._entropy_loss_scale * self.policy2.get_entropy(role="policy").mean()
+                        entropy_loss = -self._entropy_loss_scale * self.policy.get_entropy(role="policy").mean()
+                        entropy_loss_low = -self._entropy_loss_scale * self.policy_low.get_entropy(role="policy").mean()
                     else:
-                        entropy_loss_1 = 0
-                        entropy_loss_2 = 0
+                        entropy_loss = 0
+                        entropy_loss_low = 0
 
                     # compute policy loss
-                    ratio1 = torch.exp(next_log_prob_1 - sampled_log_prob_1)
-                    surrogate1 = sampled_advantages_1 * ratio1
-                    surrogate_clipped_1 = sampled_advantages_1 * torch.clip(
-                        ratio1, 1.0 - self._ratio_clip, 1.0 + self._ratio_clip
+                    ratio = torch.exp(next_log_prob - sampled_log_prob)
+                    surrogate = sampled_advantages * ratio
+                    surrogate_clipped = sampled_advantages * torch.clip(
+                        ratio, 1.0 - self._ratio_clip, 1.0 + self._ratio_clip
                     )
-                    ratio2 = torch.exp(next_log_prob_2 - sampled_log_prob_2)
-                    surrogate2 = sampled_advantages_2 * ratio2
-                    surrogate_clipped_2 = sampled_advantages_2 * torch.clip(
-                        ratio2, 1.0 - self._ratio_clip, 1.0 + self._ratio_clip
-                    )
+                    policy_loss = -torch.min(surrogate, surrogate_clipped).mean()
 
-                    policy_loss_1 = -torch.min(surrogate1, surrogate_clipped_1).mean()
-                    policy_loss_2 = -torch.min(surrogate2, surrogate_clipped_2).mean()
+                    # compute low level policy loss
+                    ratio = torch.exp(next_log_prob_low - sampled_log_prob_low)
+                    surrogate = sampled_advantages_low * ratio
+                    surrogate_clipped = sampled_advantages_low * torch.clip(
+                        ratio, 1.0 - self._ratio_clip, 1.0 + self._ratio_clip
+                    )
+                    policy_loss_low = -torch.min(surrogate, surrogate_clipped).mean()
 
                     # compute value loss
-                    predicted_values_1, _, _ = self.value1.act({"states": sampled_states_1}, role="value")
-                    predicted_values_2, _, _ = self.value2.act({"states": sampled_states_2}, role="value")
-
+                    predicted_values, _, _ = self.value.act({"states": sampled_states}, role="value")
                     if self._clip_predicted_values:
-                        predicted_values_1 = sampled_values_1 + torch.clip(
-                            predicted_values_1 - sampled_values_1, min=-self._value_clip, max=self._value_clip
+                        predicted_values = sampled_values + torch.clip(
+                            predicted_values - sampled_values, min=-self._value_clip, max=self._value_clip
                         )
-                        predicted_values_2 = sampled_values_2 + torch.clip(
-                            predicted_values_2 - sampled_values_2, min=-self._value_clip, max=self._value_clip
-                        )
+                    value_loss = self._value_loss_scale * F.mse_loss(sampled_returns, predicted_values)
 
-                    value_loss_1 = self._value_loss_scale * F.mse_loss(sampled_returns_1, predicted_values_1)
-                    value_loss_2 = self._value_loss_scale * F.mse_loss(sampled_returns_2, predicted_values_2)
+                    # compute  low level value loss
+                    predicted_values_low, _, _ = self.value_low.act({"states": sampled_states, "actions": sampled_actions}, role="value")
+                    if self._clip_predicted_values:
+                        predicted_values = sampled_values_low + torch.clip(
+                            predicted_values_low - sampled_values_low, min=-self._value_clip, max=self._value_clip
+                        )
+                    value_loss_low = self._value_loss_scale * F.mse_loss(sampled_returns_low, predicted_values)
 
                     # compute discriminator loss
                     if self._discriminator_batch_size:
-                        sampled_amp_states = sampled_amp_states[0 : self._discriminator_batch_size] # current states from current policy
-                        sampled_amp_replay_states = sampled_replay_batches[batch_index][0][0 : self._discriminator_batch_size] # history states from replay buffer
-                        sampled_amp_motion_states = sampled_motion_batches[batch_index][0][0 : self._discriminator_batch_size] # ground truth states from motion dataset
+                        sampled_amp_states = self._amp_state_preprocessor(
+                            sampled_amp_states[0 : self._discriminator_batch_size], train=True
+                        )
+                        sampled_amp_replay_states = self._amp_state_preprocessor(
+                            sampled_replay_batches[batch_index][0][0 : self._discriminator_batch_size], train=True
+                        )
+                        sampled_amp_motion_states = self._amp_state_preprocessor(
+                            sampled_motion_batches[batch_index][0][0 : self._discriminator_batch_size], train=True
+                        )
                     else:
-                        sampled_amp_states = sampled_amp_states
-                        sampled_amp_replay_states = sampled_replay_batches[batch_index][0]
-                        sampled_amp_motion_states = sampled_motion_batches[batch_index][0]
-                    
-
-                    sampled_amp_states = self._amp_state_preprocessor(sampled_amp_states, train=True)
-                    sampled_amp_replay_states = self._amp_state_preprocessor(sampled_amp_replay_states, train=True)
+                        sampled_amp_states = self._amp_state_preprocessor(sampled_amp_states, train=True)
+                        sampled_amp_replay_states = self._amp_state_preprocessor(
+                            sampled_replay_batches[batch_index][0], train=True
+                        )
+                        sampled_amp_motion_states = self._amp_state_preprocessor(
+                            sampled_motion_batches[batch_index][0], train=True
+                        )
 
                     sampled_amp_motion_states.requires_grad_(True)
-
-                    # observed state distribution
-                    amp_logits, _, _ = self.discriminator.act(
-                        {"states": sampled_amp_states}, role="discriminator")
+                    amp_logits, _, _ = self.discriminator.act({"states": sampled_amp_states}, role="discriminator")
                     amp_replay_logits, _, _ = self.discriminator.act(
                         {"states": sampled_amp_replay_states}, role="discriminator"
                     )
-                    # ground truth state distribution
                     amp_motion_logits, _, _ = self.discriminator.act(
                         {"states": sampled_amp_motion_states}, role="discriminator"
                     )
@@ -770,77 +783,72 @@ class AMP(BaseAgent):
 
                 # optimization step
                 self.optimizer.zero_grad()
-                self.scaler.scale(policy_loss_1 + entropy_loss_1 + value_loss_1 + 
-                                  policy_loss_2 + entropy_loss_2 + value_loss_2 + 
-                                  discriminator_loss).backward()
-
-                if config.torch.is_distributed:
-                    self.policy1.reduce_parameters()
-                    self.value1.reduce_parameters()
-                    self.policy2.reduce_parameters()
-                    self.value2.reduce_parameters()
-                    self.discriminator.reduce_parameters()
+                self.optimizer_low.zero_grad()
+                self.scaler.scale(policy_loss + entropy_loss + value_loss + discriminator_loss).backward()
+                self.scaler_low.scale(policy_loss_low + entropy_loss_low + value_loss_low).backward()
 
                 if self._grad_norm_clip > 0:
                     self.scaler.unscale_(self.optimizer)
+                    self.scaler_low.unscale_(self.optimizer_low)
                     nn.utils.clip_grad_norm_(
                         itertools.chain(
-                            self.policy1.parameters(), self.value1.parameters(), 
-                            self.policy2.parameters(), self.value2.parameters(), 
-                            self.discriminator.parameters()
+                            self.policy.parameters(), self.value.parameters(), self.discriminator.parameters()
+                        ),
+                        self._grad_norm_clip,
+                    )
+                    nn.utils.clip_grad_norm_(
+                        itertools.chain(
+                            self.policy_low.parameters(), self.value_low.parameters()
                         ),
                         self._grad_norm_clip,
                     )
 
                 self.scaler.step(self.optimizer)
+                self.scaler_low.step(self.optimizer_low)
                 self.scaler.update()
+                self.scaler_low.update()
 
                 # update cumulative losses
-                cumulative_policy_loss_1 += policy_loss_1.item()
-                cumulative_value_loss_1 += value_loss_1.item()
-                cumulative_policy_loss_2 += policy_loss_2.item()
-                cumulative_value_loss_2 += value_loss_2.item()
+                cumulative_policy_loss += policy_loss.item()
+                cumulative_value_loss += value_loss.item()
+                cumulative_policy_loss_low += policy_loss_low.item()
+                cumulative_value_loss_low += value_loss_low.item()
                 if self._entropy_loss_scale:
-                    cumulative_entropy_loss_1 += entropy_loss_1.item()
-                    cumulative_entropy_loss_2 += entropy_loss_2.item()
+                    cumulative_entropy_loss += entropy_loss.item()
+                    cumulative_entropy_loss_low += entropy_loss_low.item()
                 cumulative_discriminator_loss += discriminator_loss.item()
 
             # update learning rate
             if self._learning_rate_scheduler:
                 if isinstance(self.scheduler, KLAdaptiveLR):
-                    kl = torch.tensor(kl_divergences_1 + kl_divergences_2, device=self.device).mean()
-                    # reduce (collect from all workers/processes) KL in distributed runs
-                    if config.torch.is_distributed:
-                        torch.distributed.all_reduce(kl, op=torch.distributed.ReduceOp.SUM)
-                        kl /= config.torch.world_size
+                    kl = torch.tensor(kl_divergences, device=self.device).mean()
+                    kl_low = torch.tensor(kl_divergences_low, device=self.device).mean()
                     self.scheduler.step(kl.item())
+                    self.scheduler_low.step(kl_low.item())
                 else:
                     self.scheduler.step()
+                    self.scheduler_low.step()
 
         # update AMP replay buffer
         self.reply_buffer.add_samples(states=amp_states.view(-1, amp_states.shape[-1]))
 
         # record data
-        self.track_data("Loss / Policy loss 1", cumulative_policy_loss_1 / (self._learning_epochs * self._mini_batches))
-        self.track_data("Loss / Value loss 1", cumulative_value_loss_1 / (self._learning_epochs * self._mini_batches))
+        self.track_data("Loss / Policy loss", cumulative_policy_loss / (self._learning_epochs * self._mini_batches))
+        self.track_data("Loss / Value loss", cumulative_value_loss / (self._learning_epochs * self._mini_batches))
+        self.track_data("Loss / Low Policy loss", cumulative_policy_loss_low / (self._learning_epochs * self._mini_batches))
+        self.track_data("Loss / Low Value loss", cumulative_value_loss_low / (self._learning_epochs * self._mini_batches))
         if self._entropy_loss_scale:
             self.track_data(
-                "Loss / Entropy loss 1", cumulative_entropy_loss_1 / (self._learning_epochs * self._mini_batches)
+                "Loss / Entropy loss", cumulative_entropy_loss / (self._learning_epochs * self._mini_batches)
             )
-
-        self.track_data("Loss / Policy loss 2", cumulative_policy_loss_2 / (self._learning_epochs * self._mini_batches))
-        self.track_data("Loss / Value loss 2", cumulative_value_loss_2 / (self._learning_epochs * self._mini_batches))
-        if self._entropy_loss_scale:
             self.track_data(
-                "Loss / Entropy loss 2", cumulative_entropy_loss_2 / (self._learning_epochs * self._mini_batches)
+                "Loss / Low Entropy loss", cumulative_entropy_loss_low / (self._learning_epochs * self._mini_batches)
             )
-
         self.track_data(
             "Loss / Discriminator loss", cumulative_discriminator_loss / (self._learning_epochs * self._mini_batches)
         )
 
-        self.track_data("Policy / Standard deviation 1", self.policy1.distribution(role="policy").stddev.mean().item())
-        self.track_data("Policy / Standard deviation 2", self.policy2.distribution(role="policy").stddev.mean().item())
+        self.track_data("Policy / Standard deviation", self.policy.distribution(role="policy").stddev.mean().item())
 
         if self._learning_rate_scheduler:
             self.track_data("Learning / Learning rate", self.scheduler.get_last_lr()[0])

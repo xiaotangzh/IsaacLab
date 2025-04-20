@@ -32,7 +32,7 @@ import torch
 from poselib.core.rotation3d import *
 from poselib.skeleton.skeleton3d import SkeletonTree, SkeletonState
 from poselib.visualization.common import plot_skeleton_state
-from motion_lib import animate3D
+from visualization import animate3D
 
 """
 This scripts imports a MJCF XML file and converts the skeleton into a SkeletonTree format.

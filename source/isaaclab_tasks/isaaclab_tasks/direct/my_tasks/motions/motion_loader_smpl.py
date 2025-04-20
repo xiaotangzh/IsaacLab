@@ -8,7 +8,6 @@ import os
 import torch
 from typing import Optional
 
-
 class MotionLoader:
     """
     Helper class to load and sample motion data from NumPy-file format.

@@ -38,13 +38,13 @@ class Cfg(DirectRLEnvCfg):
     state_space: int = 0
     num_amp_observations: int = 2
     amp_observation_space: int = MISSING
-    relative_pose_observation: int = MISSING
+    relative_pose_observation: int = 0
 
     # reward
     reward: list = []
     
     # motions
-    action_clip: list = [-0.1, 0.1]
+    action_clip: list = MISSING
     init_root_height: float = 0.15
     early_termination: bool = True
     key_body_names: list = MISSING
@@ -57,7 +57,7 @@ class Cfg(DirectRLEnvCfg):
 
 
     # simulation
-    episode_length_s = 10.0 # 10s * 30fps = 300 frames
+    episode_length_s = -1 #10.0 # 10s * 30fps = 300 frames
     decimation = 2
     dt = 1 / 60
     sim: SimulationCfg = SimulationCfg(
@@ -125,10 +125,11 @@ class EnvCfg2Robots(Cfg):
     motion_file_1: str = MISSING
     motion_file_2: str = MISSING
 
-class EnvCfg1RobotSMPL(EnvCfg2Robots):
+class EnvCfg1RobotSMPL(EnvCfg1Robot):
     robot_format = "SMPL"
     robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
 
+    action_clip = [-0.1, 0.1]
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
     observation_space = 151 
@@ -142,6 +143,7 @@ class EnvCfg2RobotsSMPL(EnvCfg2Robots):
     robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
     robot2: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot2")
 
+    action_clip = [-0.1, 0.1]
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
     observation_space = 151 * 2
@@ -162,6 +164,7 @@ class EnvCfg1RobotHumanoid(EnvCfg1Robot):
             ),
         },
     )
+    action_clip = [None, None]
     termination_bodies = ["torso", "head"]
     termination_heights = [0.4, 0.7]
     observation_space = 69
@@ -192,6 +195,7 @@ class EnvCfg2RobotHumanoid(EnvCfg2Robots):
             ),
         },
     )
+    action_clip = [None, None]
     termination_bodies = ["torso", "head"]
     termination_heights = [0.4, 0.7]
     observation_space = 69 * 2

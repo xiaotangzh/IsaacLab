@@ -57,3 +57,14 @@ gym.register(
     },
 )
 
+
+### HRL
+gym.register(
+    id="HRL-InterHuman",
+    entry_point=f"{__name__}.env:Env",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.task_cfg:HRLInterHumanEnvCfg",
+        "skrl_amp_cfg_entry_point": f"{agents.__name__}:skrl_amp_interhuman_cfg.yaml",
+    },
+)
