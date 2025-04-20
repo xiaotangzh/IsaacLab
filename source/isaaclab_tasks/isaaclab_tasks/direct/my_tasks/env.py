@@ -263,7 +263,7 @@ class Env(DirectRLEnv):
             
     def _get_observations(self) -> dict:
         # build task observation
-        obs_1 = compute_obs(
+        obs_1 = self.compute_obs(
             self.robot1.data.joint_pos,
             self.robot1.data.joint_vel,
             self.robot1.data.body_pos_w[:, self.ref_body_index],
@@ -273,7 +273,7 @@ class Env(DirectRLEnv):
             self._motion_loader_1.get_relative_pose(frame=self.episode_length_buf) if self.cfg.require_relative_pose else None
         )
         if self.robot2:
-            obs_2 = compute_obs(
+            obs_2 = self.compute_obs(
                 self.robot2.data.joint_pos,
                 self.robot2.data.joint_vel,
                 self.robot2.data.body_pos_w[:, self.ref_body_index],
@@ -283,23 +283,20 @@ class Env(DirectRLEnv):
                 self._motion_loader_2.get_relative_pose(frame=self.episode_length_buf) if self.cfg.require_relative_pose else None
             )
 
-
         # detect NaN in observations
-        nan_envs_1 = check_nan(obs_1)
+        nan_envs = check_nan(obs_1)
         if self.robot2: 
             nan_envs_2 = check_nan(obs_2)
-            nan_envs = torch.logical_or(nan_envs_1, nan_envs_2)
-        else:
-            nan_envs = nan_envs_1
+            nan_envs = torch.logical_or(nan_envs, nan_envs_2)
         
+        # reset NaN environments
         if torch.any(nan_envs):
             nan_env_ids = torch.nonzero(nan_envs, as_tuple=False).flatten()
             print(f"Warning: NaN detected in envs {nan_env_ids.tolist()}, resetting these envs.")
             self._reset_idx(nan_env_ids)
             
-            # reset observations for the affected envs
             if len(nan_env_ids) > 0:
-                obs_1[nan_env_ids] = compute_obs(
+                obs_1[nan_env_ids] = self.compute_obs(
                     self.robot1.data.joint_pos[nan_env_ids],
                     self.robot1.data.joint_vel[nan_env_ids],
                     self.robot1.data.body_pos_w[nan_env_ids, self.ref_body_index],
@@ -309,7 +306,7 @@ class Env(DirectRLEnv):
                     self._motion_loader_1.get_relative_pose(frame=self.episode_length_buf[nan_env_ids]) if self.cfg.require_relative_pose else None
                 )
                 if self.robot2: 
-                    obs_2[nan_env_ids] = compute_obs(
+                    obs_2[nan_env_ids] = self.compute_obs(
                         self.robot2.data.joint_pos[nan_env_ids],
                         self.robot2.data.joint_vel[nan_env_ids],
                         self.robot2.data.body_pos_w[nan_env_ids, self.ref_body_index],
@@ -318,15 +315,39 @@ class Env(DirectRLEnv):
                         self.robot2.data.body_ang_vel_w[nan_env_ids, self.ref_body_index],
                         self._motion_loader_2.get_relative_pose(frame=self.episode_length_buf[nan_env_ids]) if self.cfg.require_relative_pose else None
                     )
-        # end detect NaN
+
+        # build AMP observation
+        amp_obs_1 = self.compute_obs(
+            self.robot1.data.joint_pos,
+            self.robot1.data.joint_vel,
+            self.robot1.data.body_pos_w[:, self.ref_body_index],
+            self.robot1.data.body_quat_w[:, self.ref_body_index],
+            self.robot1.data.body_lin_vel_w[:, self.ref_body_index],
+            self.robot1.data.body_ang_vel_w[:, self.ref_body_index],
+        )
+        if self.robot2:
+            amp_obs_2 = self.compute_obs(
+                self.robot2.data.joint_pos,
+                self.robot2.data.joint_vel,
+                self.robot2.data.body_pos_w[:, self.ref_body_index],
+                self.robot2.data.body_quat_w[:, self.ref_body_index],
+                self.robot2.data.body_lin_vel_w[:, self.ref_body_index],
+                self.robot2.data.body_ang_vel_w[:, self.ref_body_index],
+            )
+        
+        # combine 2 robots observation 
+        if self.robot2: 
+            obs = torch.cat([obs_1, obs_2], dim=-1)
+            amp_obs = torch.cat([amp_obs_1, amp_obs_2], dim=-1)
+        else: 
+            obs = obs_1
+            amp_obs = amp_obs_1
 
         # update AMP observation history (pop out)
         for i in reversed(range(self.cfg.num_amp_observations - 1)):
             self.amp_observation_buffer[:, i + 1] = self.amp_observation_buffer[:, i]
-        # build AMP observation (push in)
-        if self.robot2: obs = torch.cat([obs_1, obs_2], dim=-1)
-        else: obs = obs_1
-        self.amp_observation_buffer[:, 0] = obs.clone() # buffer: [num_envs, num_amp_observations, amp_observation_space]
+        # update AMP observation history (push in)
+        self.amp_observation_buffer[:, 0] = amp_obs.clone() # buffer: [num_envs, num_amp_observations, amp_observation_space]
         self.extras = {"amp_obs": self.amp_observation_buffer.view(-1, self.amp_observation_size)}
 
         return {"policy": obs}
@@ -383,7 +404,7 @@ class Env(DirectRLEnv):
             - self._motion_loader_1.dt * np.arange(0, self.cfg.num_amp_observations)
         ).flatten()
 
-        if motion_loader:
+        if motion_loader: # updating AMP observation buffer
             # get motions
             (
                 dof_positions,
@@ -395,20 +416,20 @@ class Env(DirectRLEnv):
             ) = motion_loader.sample(num_samples=num_samples, times=times)
             
             # compute AMP observation
-            amp_observation = compute_obs(
+            amp_observation = self.compute_obs(
                 dof_positions[:, self.motion_dof_indexes],
                 dof_velocities[:, self.motion_dof_indexes],
                 body_positions[:, self.motion_ref_body_index],
                 body_rotations[:, self.motion_ref_body_index],
                 root_linear_velocity,
                 root_angular_velocity,
-                motion_loader.get_relative_pose(times=current_times) if self.cfg.require_relative_pose else None
+                # motion_loader.get_relative_pose(times=current_times) if self.cfg.require_relative_pose else None
             ).view(-1, int(self.amp_observation_size/2))
 
             return amp_observation # (num_envs, state transitions)
 
-        else:
-            motion_loader = random.choice([self._motion_loader_1, self._motion_loader_2])
+        else: # updating AMP motion dataset (ground truth)
+            motion_loader = self._motion_loader_1
             # get motions
             (
                 dof_positions,
@@ -419,40 +440,38 @@ class Env(DirectRLEnv):
                 root_angular_velocity,
             ) = motion_loader.sample(num_samples=num_samples, times=times) # (num_samples * num_amp_observation, dof)
             # compute AMP observation
-            amp_observation = compute_obs(
+            amp_observation = self.compute_obs(
                 dof_positions[:, self.motion_dof_indexes],
                 dof_velocities[:, self.motion_dof_indexes],
                 body_positions[:, self.motion_ref_body_index],
                 body_rotations[:, self.motion_ref_body_index],
                 root_linear_velocity,
                 root_angular_velocity,
-                motion_loader.get_relative_pose(times=current_times) if self.cfg.require_relative_pose else None
+                # motion_loader.get_relative_pose(times=current_times) if self.cfg.require_relative_pose else None
             ).view(-1, int(self.amp_observation_size/2))
             
-            # if self.robot2:
-            #     motion_loader = self._motion_loader_2
-            #     # get motions
-            #     (
-            #         dof_positions,
-            #         dof_velocities,
-            #         body_positions,
-            #         body_rotations,
-            #         root_linear_velocity,
-            #         root_angular_velocity,
-            #     ) = motion_loader.sample(num_samples=num_samples, times=times)
-            #     # compute AMP observation
-            #     amp_observation_2 = compute_obs(
-            #         dof_positions[:, self.motion_dof_indexes],
-            #         dof_velocities[:, self.motion_dof_indexes],
-            #         body_positions[:, self.motion_ref_body_index],
-            #         body_rotations[:, self.motion_ref_body_index],
-            #         root_linear_velocity,
-            #         root_angular_velocity,
-            #         motion_loader.get_relative_pose(times=current_times) if self.cfg.require_relative_pose else None
-            #     ).view(-1, int(self.amp_observation_size/2))
-            #     amp_observation = torch.cat([amp_observation_1, amp_observation_2], dim=-1)
-            # else:
-            #     amp_observation = amp_observation_1
+            if self.robot2:
+                motion_loader = self._motion_loader_2
+                # get motions
+                (
+                    dof_positions,
+                    dof_velocities,
+                    body_positions,
+                    body_rotations,
+                    root_linear_velocity,
+                    root_angular_velocity,
+                ) = motion_loader.sample(num_samples=num_samples, times=times)
+                # compute AMP observation
+                amp_observation_2 = self.compute_obs(
+                    dof_positions[:, self.motion_dof_indexes],
+                    dof_velocities[:, self.motion_dof_indexes],
+                    body_positions[:, self.motion_ref_body_index],
+                    body_rotations[:, self.motion_ref_body_index],
+                    root_linear_velocity,
+                    root_angular_velocity,
+                    # motion_loader.get_relative_pose(times=current_times) if self.cfg.require_relative_pose else None
+                ).view(-1, int(self.amp_observation_size/2))
+                amp_observation = torch.cat([amp_observation, amp_observation_2], dim=-1)
 
             return amp_observation
     
@@ -484,9 +503,9 @@ class Env(DirectRLEnv):
         })
     
     def write_ref_state(self, robot, ref_state_buffer):
-        robot.write_root_link_pose_to_sim(ref_state_buffer['root_state'][:, self.episode_length_buf, :7],
+        robot.write_root_link_pose_to_sim(ref_state_buffer['root_state'][torch.arange(self.num_envs), self.episode_length_buf, :7],
                                           robot._ALL_INDICES)
-        robot.write_root_com_velocity_to_sim(ref_state_buffer['root_state'][:, self.episode_length_buf, 7:],
+        robot.write_root_com_velocity_to_sim(ref_state_buffer['root_state'][torch.arange(self.num_envs), self.episode_length_buf, 7:],
                                              robot._ALL_INDICES)
         
         #TODO: what is the difference between the two lines below?
@@ -495,8 +514,8 @@ class Env(DirectRLEnv):
         # self.robot.write_root_state_to_sim(self.ref_state_buffer['root_state'][:, self.ref_state_buffer_index], 
         #                                           self.robot._ALL_INDICES)
         
-        robot.write_joint_state_to_sim(ref_state_buffer['joint_pos'][:, self.episode_length_buf],
-                                       ref_state_buffer['joint_vel'][:, self.episode_length_buf],
+        robot.write_joint_state_to_sim(ref_state_buffer['joint_pos'][torch.arange(self.num_envs), self.episode_length_buf],
+                                       ref_state_buffer['joint_vel'][torch.arange(self.num_envs), self.episode_length_buf],
                                        None, robot._ALL_INDICES)
         
     def precompute_relative_body_positions(self, 
@@ -633,6 +652,32 @@ class Env(DirectRLEnv):
 
     def reward_ones(self) -> torch.Tensor:
         return torch.ones((self.num_envs,), dtype=torch.float32, device=self.sim.device)
+    
+    def compute_obs(self,
+        dof_positions: torch.Tensor,
+        dof_velocities: torch.Tensor,
+        root_position: torch.Tensor,
+        root_rotation: torch.Tensor,
+        root_linear_velocity: torch.Tensor,
+        root_angular_velocity: torch.Tensor,
+        relative_pose: torch.Tensor | None=None,
+    ) -> torch.Tensor:
+        obs = torch.cat(
+            (
+                dof_positions,
+                dof_velocities,
+                root_position,
+                root_rotation,
+                root_linear_velocity,
+                root_angular_velocity,
+            ),
+            dim=-1,
+        )
+        
+        if relative_pose is not None: 
+            relative_pose = relative_pose.reshape(obs.shape[0], -1)
+            obs = torch.cat((obs, relative_pose), dim=-1)
+        return obs
 
 
 @torch.jit.script
@@ -644,34 +689,6 @@ def quaternion_to_tangent_and_normal(q: torch.Tensor) -> torch.Tensor:
     tangent = quat_rotate(q, ref_tangent)
     normal = quat_rotate(q, ref_normal)
     return torch.cat([tangent, normal], dim=len(tangent.shape) - 1)
-
-
-@torch.jit.script
-def compute_obs(
-    dof_positions: torch.Tensor,
-    dof_velocities: torch.Tensor,
-    root_position: torch.Tensor,
-    root_rotation: torch.Tensor,
-    root_linear_velocity: torch.Tensor,
-    root_angular_velocity: torch.Tensor,
-    relative_pose: torch.Tensor | None=None,
-) -> torch.Tensor:
-    obs = torch.cat(
-        (
-            dof_positions,
-            dof_velocities,
-            root_position,
-            root_rotation,
-            root_linear_velocity,
-            root_angular_velocity,
-        ),
-        dim=-1,
-    )
-    
-    if relative_pose is not None: 
-        relative_pose = relative_pose.reshape(obs.shape[0], -1)
-        obs = torch.cat((obs, relative_pose), dim=-1)
-    return obs
 
 @torch.jit.script
 def check_nan(tensor: torch.Tensor) -> torch.Tensor:

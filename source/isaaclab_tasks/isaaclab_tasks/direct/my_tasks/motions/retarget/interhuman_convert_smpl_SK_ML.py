@@ -6,6 +6,7 @@ import argparse
 import numpy as np
 import os
 from tqdm import tqdm
+import sys
 
 def convert(path, file_name, person: str = "person1", visualize: bool = False):
     SKMotion = run(
@@ -18,7 +19,9 @@ def convert(path, file_name, person: str = "person1", visualize: bool = False):
         text = text_file.read().splitlines()
     
     # check SkeletonMotion
-    # animate3D(SKMotion.global_translation.reshape(-1, 24, 3))
+    print(SKMotion.global_transformation.shape, SKMotion.local_transformation.shape)
+    # animate3D(SKMotion.global_translation)
+    # sys.exit(0)
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     body_names = ['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']

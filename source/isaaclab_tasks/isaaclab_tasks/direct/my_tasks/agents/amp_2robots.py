@@ -277,7 +277,7 @@ class AMP(BaseAgent):
             self.memory.create_tensor(name="returns", size=2, dtype=torch.float32)
             self.memory.create_tensor(name="advantages", size=2, dtype=torch.float32)
             
-            self.memory.create_tensor(name="amp_states", size=int(self.amp_observation_space/2), dtype=torch.float32)
+            self.memory.create_tensor(name="amp_states", size=self.amp_observation_space, dtype=torch.float32)
             self.memory.create_tensor(name="next_values", size=2, dtype=torch.float32)
 
         self.tensors_names = [
@@ -296,8 +296,8 @@ class AMP(BaseAgent):
 
         # create tensors for motion dataset and reply buffer
         if self.motion_dataset is not None:
-            self.motion_dataset.create_tensor(name="states", size=int(self.amp_observation_space/2), dtype=torch.float32)
-            self.reply_buffer.create_tensor(name="states", size=int(self.amp_observation_space/2), dtype=torch.float32)
+            self.motion_dataset.create_tensor(name="states", size=self.amp_observation_space, dtype=torch.float32)
+            self.reply_buffer.create_tensor(name="states", size=self.amp_observation_space, dtype=torch.float32)
 
             # initialize motion dataset
             for _ in range(math.ceil(self.motion_dataset.memory_size / self._amp_batch_size)):
@@ -380,10 +380,6 @@ class AMP(BaseAgent):
 
         if self.memory is not None:
             amp_states = infos["amp_obs"]
-            # caution!
-            amp_states = amp_states.reshape(-1, int(amp_states.shape[1]/2))
-            rand_indices = torch.randperm(amp_states.shape[0])[:int(amp_states.shape[0]/2)]
-            amp_states = amp_states[rand_indices]
 
             # reward shaping
             if self._rewards_shaper is not None:

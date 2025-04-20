@@ -18,12 +18,13 @@ class AmpInterHumanEnvCfg2Robots(EnvCfg2RobotsSMPL):
     motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/1_2.npz")
 
     reward = ["ones"]
-    reset_strategy = "random"
+    reset_strategy = "random_start"
+    sync_motion = False
 
     require_relative_pose = True
     relative_pose_observation = 24 * 3
     observation_space = 2 * (151 + relative_pose_observation)
-    amp_observation_space = observation_space
+    amp_observation_space =  2 * 151
 
 @configclass
 class AmpInterHumanEnvCfg(EnvCfg1RobotSMPL):

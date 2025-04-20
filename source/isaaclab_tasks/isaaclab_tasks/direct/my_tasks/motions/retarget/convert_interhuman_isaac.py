@@ -78,8 +78,8 @@ def run(in_file: str, SKMotion_out_file = None, person: str = "person1"):
     double = False
 
     # mujoco_joint_names = ['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
-    mujoco_joint_names = SMPL_MUJOCO_NAMES
-    joint_names = SMPL_BONE_ORDER_NAMES
+    target_joint_names = SMPL_MUJOCO_NAMES
+    source_joint_names = SMPL_BONE_ORDER_NAMES
 
 
     # start retargeting
@@ -117,7 +117,7 @@ def run(in_file: str, SKMotion_out_file = None, person: str = "person1"):
         ipdb.set_trace()
         raise Exception("Gender Not Supported!!")
 
-    smpl_2_mujoco = [joint_names.index(q) for q in mujoco_joint_names if q in joint_names]
+    smpl_2_mujoco = [source_joint_names.index(q) for q in target_joint_names if q in source_joint_names]
     batch_size = pose_aa.shape[0]
     pose_aa = np.concatenate([pose_aa[:, :66], np.zeros((batch_size, 6))], axis=1) # 23*3 joints + zero values L/R hands = 24 joints
     pose_aa_mj = pose_aa.reshape(-1, 24, 3)[..., smpl_2_mujoco, :].copy()
@@ -132,8 +132,12 @@ def run(in_file: str, SKMotion_out_file = None, person: str = "person1"):
         print("using neutral model")
 
         smpl_local_robot.load_from_skeleton(betas=torch.from_numpy(beta[None,]), gender=gender_number, objs_info=None)
-        smpl_local_robot.write_xml("../assets/smpl_humanoid_1.xml")
-        skeleton_tree = SkeletonTree.from_mjcf("../assets/smpl_humanoid_1.xml")
+        smpl_local_robot.write_xml("../assets/smpl_humanoid.xml")
+        skeleton_tree = SkeletonTree.from_mjcf("../assets/smpl_humanoid.xml")
+        #TODO:
+        # skeleton_tree = SkeletonTree.from_mjcf("../assets/amp_humanoid.xml")
+        # print(skeleton_tree.node_names, skeleton_tree.num_joints)
+        # print(pose_quat.shape)
 
         root_trans_offset = torch.from_numpy(root_trans) + skeleton_tree.local_translation[0]
 
@@ -151,11 +155,6 @@ def run(in_file: str, SKMotion_out_file = None, person: str = "person1"):
         # save as SkeletonMotion
         if SKMotion_out_file:
             target_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=int(fps))
-            # target_motion.to_file(SKMotion_out_file)
-            # draw3D(target_motion.global_transformation[100,:,-3:])
-            # animate3D(target_motion.global_transformation[:,:,-3:])
-            # animate3D(target_motion.global_translation)
-            # print(target_motion.global_transformation.shape)
             return target_motion
 
 def draw3D(tensor):
