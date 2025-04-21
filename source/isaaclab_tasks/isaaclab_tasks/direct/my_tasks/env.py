@@ -444,6 +444,7 @@ class Env(DirectRLEnv):
                 root_linear_velocity,
                 root_angular_velocity,
             ) = motion_loader.sample(num_samples=num_samples, times=times) # (num_samples * num_amp_observation, dof)
+
             # compute AMP observation
             amp_observation = self.compute_obs(
                 dof_positions[:, self.motion_dof_indexes],

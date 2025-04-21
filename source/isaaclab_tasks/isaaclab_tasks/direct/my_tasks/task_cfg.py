@@ -45,7 +45,7 @@ class PPOEnvCfg(EnvCfg1RobotSMPL):
 
 @configclass
 class PPOHumanoidEnvCfg(EnvCfg1RobotHumanoid):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid/humanoid_walk.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_walk.npz")
     reward = ["com_acc", "stand_forward"]
     reset_strategy = "default"
 
@@ -65,4 +65,16 @@ class HRLInterHumanEnvCfg(EnvCfg1RobotSMPL):
     reset_strategy = "random_start"
 
     terrain = "uneven"
-    init_root_height = 2.0
+    init_root_height = 0.3
+
+@configclass
+class HRLHumanoidEnvCfg(EnvCfg1RobotHumanoid):
+    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_dance.npz")
+
+    reward = ["com_acc"]
+    reset_strategy = "random_start"
+
+    terrain = "uneven"
+    init_root_height = 0.3
+
+    # sync_motion = True

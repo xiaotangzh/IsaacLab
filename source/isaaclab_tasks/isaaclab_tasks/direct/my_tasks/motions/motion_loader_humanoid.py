@@ -41,6 +41,8 @@ class MotionLoader:
         self.body_angular_velocities = torch.tensor(
             data["body_angular_velocities"], dtype=torch.float32, device=self.device
         )
+        self.root_linear_velocity = self.body_linear_velocities[:,0]
+        self.root_angular_velocity = self.body_angular_velocities[:,0]
 
         self.dt = 1.0 / data["fps"]
         self.num_frames = self.dof_positions.shape[0]
@@ -222,9 +224,17 @@ class MotionLoader:
             self._interpolate(self.dof_velocities, blend=blend, start=index_0, end=index_1),
             self._interpolate(self.body_positions, blend=blend, start=index_0, end=index_1),
             self._slerp(self.body_rotations, blend=blend, start=index_0, end=index_1),
-            self._interpolate(self.body_linear_velocities, blend=blend, start=index_0, end=index_1),
-            self._interpolate(self.body_angular_velocities, blend=blend, start=index_0, end=index_1),
+            self._interpolate(self.root_linear_velocity, blend=blend, start=index_0, end=index_1),
+            self._interpolate(self.root_angular_velocity, blend=blend, start=index_0, end=index_1),
         )
+
+    def get_all_references(self, num_samples: int = 1):
+        return (self.dof_positions.clone().unsqueeze(0).expand(num_samples, -1, -1), 
+                self.dof_velocities.clone().unsqueeze(0).expand(num_samples, -1, -1),
+                self.body_positions.clone().unsqueeze(0).expand(num_samples, -1, -1, -1),
+                self.body_rotations.clone().unsqueeze(0).expand(num_samples, -1, -1, -1),
+                self.root_linear_velocity.clone().unsqueeze(0).expand(num_samples, -1, -1),
+                self.root_angular_velocity.clone().unsqueeze(0).expand(num_samples, -1, -1))
 
     def get_dof_index(self, dof_names: list[str]) -> list[int]:
         """Get skeleton DOFs indexes by DOFs names.
