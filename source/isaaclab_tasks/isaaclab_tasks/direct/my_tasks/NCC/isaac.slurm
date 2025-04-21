@@ -28,10 +28,10 @@ export PYTHONPATH=$PYTHONPATH:$path_to_your_repo
 cd "/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/my_tasks"
 
 # AMP
-# python train.py --task AMP-InterHuman-2Robots --num_envs 4096 --name "motion 1 env4096 steps 8w amp_obs 2 rel pos" --steps 150000 --params 1024 --wandb --headless
+python train.py --task AMP-InterHuman-2Robots --num_envs 4096 --name "motion 1 env4096 steps 8w require another pose" --steps 80000 --params 1024 --wandb --headless
 
 # PPO
-# python train.py --task PPO --num_envs 4096 --name "com acc env4096 steps 300000 version 2" --steps 300000 --params 1024 --wandb --headless --checkpoint "logs/PPO/com acc env4096 steps 300000/checkpoints/best_agent.pt"
+# python train.py --task PPO --num_envs 4096 --name "com acc env4096 steps 300000 version 2" --steps 300000 --params 1024 --wandb --headless --disable_progressbar --checkpoint "logs/PPO/com acc env4096 steps 300000/checkpoints/best_agent.pt"
 
 # HRL
-python train.py --task HRL-Humanoid --num_envs 4096 --name "dance env4096 steps 20w" --steps 200000 --params 1024 --wandb --headless
+# python train.py --task HRL-Humanoid --num_envs 4096 --name "run flat terrain 0.15 env4096 steps 20w" --steps 200000 --params 1024 --wandb --headless --disable_progressbar

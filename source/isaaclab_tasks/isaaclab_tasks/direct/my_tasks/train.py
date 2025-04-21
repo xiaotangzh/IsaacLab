@@ -26,7 +26,8 @@ parser.add_argument("--checkpoint", type=str, default=None, help="Path to model 
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--wandb", action="store_true", default=False, help="Log training results to Weight and Bias.")
 parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate.")
-parser.add_argument("--params", type=int, default=1024, help="Number of parameters for learning.")
+parser.add_argument("--params", type=int, default=1024, help="Number of parameters for learning.") 
+parser.add_argument("--disable_progressbar", action="store_true", default=False, help="Disable progress bar of tqdm.")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # load and wrap the Isaac Lab environment
@@ -211,7 +212,7 @@ elif "HRL" in args.task:
                 device=device)
 
 # configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": args.steps, "disable_progressbar": True if sys.platform.startswith("linux") else False}
+cfg_trainer = {"timesteps": args.steps, "disable_progressbar": args.disable_progressbar}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
 # resume checkpoint (if specified)
