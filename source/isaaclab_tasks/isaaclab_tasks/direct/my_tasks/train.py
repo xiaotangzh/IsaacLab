@@ -165,7 +165,7 @@ elif "HRL" in args.task:
     agent_cfg["amp_state_preprocessor_kwargs"] = {"size": env.amp_observation_size}
     agent_cfg["discriminator_batch_size"] = 4096
     agent_cfg["clip_predicted_values"] = True
-    agent_cfg["task_reward_weight"] = 1.0
+    agent_cfg["task_reward_weight"] = 1.0 # use environment rewards
     
     # memory configuration
     rollout_memory = RandomMemory(

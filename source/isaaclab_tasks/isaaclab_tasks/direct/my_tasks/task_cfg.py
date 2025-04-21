@@ -17,7 +17,7 @@ class AmpInterHumanEnvCfg2Robots(EnvCfg2RobotsSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
     motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/1_2.npz")
 
-    reward = ["ones"]
+    reward = ["imitation"]
     reset_strategy = "random_start"
     sync_motion = False
 
@@ -29,7 +29,7 @@ class AmpInterHumanEnvCfg2Robots(EnvCfg2RobotsSMPL):
 class AmpInterHumanEnvCfg(EnvCfg1RobotSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
 
-    reward = ["ones"]
+    reward = ["imitation"]
     reset_strategy = "random"
 
 ### PPO
