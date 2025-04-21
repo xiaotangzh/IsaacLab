@@ -72,7 +72,8 @@ class LowLevelPolicy(GaussianMixin, Model):
 
     def compute(self, inputs, role):
         states = torch.cat([inputs["states"], inputs["actions"]], dim=-1)
-        return self.net(states), self.log_std_parameter, {}
+        actions = self.net(states) + inputs["actions"]
+        return actions, self.log_std_parameter, {}
 
 # ==================== Value Model (Deterministic) ====================
 class LowLevelValue(DeterministicMixin, Model):

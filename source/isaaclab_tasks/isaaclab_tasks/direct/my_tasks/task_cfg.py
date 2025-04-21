@@ -69,7 +69,7 @@ class HRLInterHumanEnvCfg(EnvCfg1RobotSMPL):
 
 @configclass
 class HRLHumanoidEnvCfg(EnvCfg1RobotHumanoid):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_dance.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_run.npz")
 
     reward = ["com_acc"]
     reset_strategy = "random_start"
