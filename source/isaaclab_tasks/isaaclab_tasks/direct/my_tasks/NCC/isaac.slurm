@@ -27,11 +27,11 @@ path_to_your_repo="/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/d
 export PYTHONPATH=$PYTHONPATH:$path_to_your_repo
 cd "/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/my_tasks"
 
-# python train.py  --task AMP-InterHuman-2Robots --num_envs 4096 --name "motion 26 env4096 steps 30w params 1024" --steps 300000 --params 1024 --wandb --headless
+# AMP
+# python train.py --task AMP-InterHuman-2Robots --num_envs 4096 --name "motion 1 env4096 steps 8w amp_obs 2 rel pos" --steps 150000 --params 1024 --wandb --headless
 
-# python train.py  --task PPO --num_envs 4096 --name "com acc env4096 steps 300000 version 2" --steps 300000 --params 1024 --wandb --headless --checkpoint "logs/PPO/com acc env4096 steps 300000/checkpoints/best_agent.pt"
+# PPO
+# python train.py --task PPO --num_envs 4096 --name "com acc env4096 steps 300000 version 2" --steps 300000 --params 1024 --wandb --headless --checkpoint "logs/PPO/com acc env4096 steps 300000/checkpoints/best_agent.pt"
 
-# python train.py  --task PPOHumanoid --num_envs 4096 --name "humanoid com acc env4096 steps 50w height 2 unflat terrain fall down termin v3" --steps 500000 --params 1024 --wandb --headless --lr 1e-5 --checkpoint "/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/my_tasks/logs/PPOHumanoid/humanoid com acc env4096 steps 50w height 2 unflat terrain fall down termin v2/checkpoints/best_agent.pt"
-
-# python train.py  --task PPOHumanoid --num_envs 64  --steps 5000 --headless 
-python train.py  --task PPOHumanoid --num_envs 512 --name "debug" --steps 300000 --params 1024 --headless --wandb
+# HRL
+python train.py --task HRL-Humanoid --num_envs 4096 --name "dance env4096 steps 20w" --steps 200000 --params 1024 --wandb --headless

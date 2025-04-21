@@ -78,3 +78,5 @@ class HRLHumanoidEnvCfg(EnvCfg1RobotHumanoid):
     init_root_height = 0.3
 
     # sync_motion = True
+
+    scene = InteractiveSceneCfg(num_envs=16, env_spacing=1.0, replicate_physics=True)
