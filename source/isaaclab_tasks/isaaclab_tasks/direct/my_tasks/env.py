@@ -238,12 +238,10 @@ class Env(DirectRLEnv):
 
             # update AMP observation buffer after resetting environments
             num_samples = env_ids.shape[0]
-            amp_observations_1 = self.collect_reference_motions(num_samples, self.sample_times, self._motion_loader_1)
+            amp_observations = self.collect_reference_motions(num_samples, self.sample_times, self._motion_loader_1)
             if self.robot2: 
                 amp_observations_2 = self.collect_reference_motions(num_samples, self.sample_times, self._motion_loader_2)
-                amp_observations = torch.cat([amp_observations_1, amp_observations_2], dim=-1)
-            else:
-                amp_observations = amp_observations_1
+                amp_observations = torch.cat([amp_observations, amp_observations_2], dim=-1)
             self.amp_observation_buffer[env_ids] = amp_observations.view(num_samples, self.cfg.num_amp_observations, -1)
         else:
             raise ValueError(f"Unknown reset strategy: {self.cfg.reset_strategy}")
@@ -318,8 +316,12 @@ class Env(DirectRLEnv):
                         self.robot2.data.body_ang_vel_w[nan_env_ids, self.ref_body_index],
                         self._motion_loader_2.get_relative_pose(frame=self.episode_length_buf[nan_env_ids]) if self.cfg.require_relative_pose else None
                     )
+        
+        # if input states with pose of another character
+        if self.cfg.require_another_pose:
+            obs_1, obs_2 = torch.cat([obs_1, obs_2], dim=-1), torch.cat([obs_2, obs_1], dim=-1)
 
-        #if amp obs is different from obs
+        # if amp obs is different from obs
         amp_obs_1 = self.compute_obs(
             self.robot1.data.joint_pos,
             self.robot1.data.joint_vel,
@@ -433,7 +435,7 @@ class Env(DirectRLEnv):
 
             return amp_observation # (num_envs, state transitions)
 
-        else: # updating AMP motion dataset (ground truth)
+        else: # updating AMP motion dataset (ground truth) for agent
             motion_loader = self._motion_loader_1
             # get motions
             (

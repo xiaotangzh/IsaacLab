@@ -53,8 +53,10 @@ class Cfg(DirectRLEnvCfg):
     reference_body: str = MISSING
     sync_motion: bool = False # apply reference actions instead of predicted actions to robots
     reset_strategy: str = "default"  # default, random, random-start (time zero from dataset)
-    require_relative_pose: bool = False # require precompute relative body positions between two robots
 
+    # two-character config
+    require_relative_pose: bool = False # require precompute relative body positions between two robots
+    require_another_pose: bool = False # require the local pose information of another character
 
     # simulation
     episode_length_s = -1 #10.0 # 10s * 30fps = 300 frames

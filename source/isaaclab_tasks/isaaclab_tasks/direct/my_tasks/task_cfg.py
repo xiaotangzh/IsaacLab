@@ -21,10 +21,9 @@ class AmpInterHumanEnvCfg2Robots(EnvCfg2RobotsSMPL):
     reset_strategy = "random_start"
     sync_motion = False
 
-    require_relative_pose = True
-    relative_pose_observation = 24 * 3
-    observation_space = 2 * (151 + relative_pose_observation)
-    amp_observation_space =  2 * (151 + relative_pose_observation)
+    require_another_pose = True
+    observation_space = 2 * 151 * 2
+    amp_observation_space =  2 * 151
 
 @configclass
 class AmpInterHumanEnvCfg(EnvCfg1RobotSMPL):
