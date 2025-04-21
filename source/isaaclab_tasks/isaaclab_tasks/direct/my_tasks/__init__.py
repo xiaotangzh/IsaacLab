@@ -38,21 +38,31 @@ gym.register(
 
 ### PPO
 gym.register(
-    id="PPO",
+    id="PPO-InterHuman",
     entry_point=f"{__name__}.env:Env",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.task_cfg:PPOEnvCfg",
+        "env_cfg_entry_point": f"{__name__}.task_cfg:PPOInterHumanEnvCfg",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )
 
 gym.register(
-    id="PPOHumanoid",
+    id="PPO-Humanoid",
     entry_point=f"{__name__}.env:Env",
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.task_cfg:PPOHumanoidEnvCfg",
+        "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
+    },
+)
+
+gym.register(
+    id="PPO-InterHuman-2Robots",
+    entry_point=f"{__name__}.env:Env",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.task_cfg:PPOInterHumanEnvCfg2Robots",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )

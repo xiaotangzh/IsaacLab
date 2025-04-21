@@ -72,9 +72,8 @@ class Env(DirectRLEnv):
         if "imitation" in self.cfg.reward or self.cfg.sync_motion:
             self.cfg.init_root_height = 0.0
             self.cfg.episode_length_s = self._motion_loader_1.duration
-        
-        # sync motion
-        if self.cfg.sync_motion:
+
+            # set reference motions
             self.ref_state_buffer_length, self.ref_state_buffer_index = self.max_episode_length, 0
             self.ref_state_buffer_1 = {}
             self.ref_state_buffer_2 = {}
@@ -485,7 +484,7 @@ class Env(DirectRLEnv):
     
     def reset_reference_buffer(self, motion_loader, ref_state_buffer: dict, env_ids: torch.Tensor | None=None):
         env_ids = self.robot1._ALL_INDICES if env_ids is None else env_ids
-        num_samples = env_ids.shape[0]
+        num_samples = 1 #env_ids.shape[0]
         
         # sample reference actions
         (
@@ -497,23 +496,28 @@ class Env(DirectRLEnv):
             ref_root_angular_velocity,
         ) = motion_loader.get_all_references(num_samples)
         
-        ref_root_state = self.robot1.data.default_root_state[env_ids].unsqueeze(1).expand(-1, ref_dof_positions.shape[1], -1).clone()
-        ref_root_state[:, :, 0:3] = ref_body_positions[:, :, self.motion_ref_body_index] + self.scene.env_origins[env_ids].unsqueeze(1)
+        # ref_root_state = self.robot1.data.default_root_state[env_ids].unsqueeze(1).expand(-1, ref_dof_positions.shape[1], -1).clone()
+        ref_root_state = torch.zeros([num_samples, ref_dof_positions.shape[1], 13], device=self.device)
+        ref_root_state[:, :, 0:3] = ref_body_positions[:, :, self.motion_ref_body_index] #+ self.scene.env_origins[env_ids].unsqueeze(1)
         ref_root_state[:, :, 3:7] = ref_body_rotations[:, :, self.motion_ref_body_index]
         ref_root_state[:, :, 7:10] = ref_root_linear_velocity
         ref_root_state[:, :, 10:13] = ref_root_angular_velocity
         
         # set reference buffer
         ref_state_buffer.update({
-            "root_state": ref_root_state,
-            "joint_pos": ref_dof_positions[:, :, self.motion_dof_indexes],
-            "joint_vel": ref_dof_velocities[:, :, self.motion_dof_indexes],
+            "root_state": ref_root_state.squeeze(0),
+            "joint_pos": ref_dof_positions[:, :, self.motion_dof_indexes].squeeze(0),
+            "joint_vel": ref_dof_velocities[:, :, self.motion_dof_indexes].squeeze(0),
         })
+        return
     
-    def write_ref_state(self, robot, ref_state_buffer):
-        robot.write_root_link_pose_to_sim(ref_state_buffer['root_state'][torch.arange(self.num_envs), self.episode_length_buf, :7],
+    def write_ref_state(self, robot: Articulation, ref_state_buffer):
+        root_pos_quat = ref_state_buffer['root_state'][self.episode_length_buf, :7]
+        root_pos_quat[:, :3] += self.scene.env_origins
+
+        robot.write_root_link_pose_to_sim(root_pos_quat,
                                           robot._ALL_INDICES)
-        robot.write_root_com_velocity_to_sim(ref_state_buffer['root_state'][torch.arange(self.num_envs), self.episode_length_buf, 7:],
+        robot.write_root_com_velocity_to_sim(ref_state_buffer['root_state'][self.episode_length_buf, 7:],
                                              robot._ALL_INDICES)
         
         #TODO: what is the difference between the two lines below?
@@ -522,8 +526,8 @@ class Env(DirectRLEnv):
         # self.robot.write_root_state_to_sim(self.ref_state_buffer['root_state'][:, self.ref_state_buffer_index], 
         #                                           self.robot._ALL_INDICES)
         
-        robot.write_joint_state_to_sim(ref_state_buffer['joint_pos'][torch.arange(self.num_envs), self.episode_length_buf],
-                                       ref_state_buffer['joint_vel'][torch.arange(self.num_envs), self.episode_length_buf],
+        robot.write_joint_state_to_sim(ref_state_buffer['joint_pos'][self.episode_length_buf],
+                                       ref_state_buffer['joint_vel'][self.episode_length_buf],
                                        None, robot._ALL_INDICES)
         
     def precompute_relative_body_positions(self, 
@@ -577,26 +581,6 @@ class Env(DirectRLEnv):
         reward = torch.clip(torch.exp(-decay * torch.mean(torch.abs(self.com_acc_robot1))), min=0.0, max=1.0)
         # print(f"center of mass acc reward: {reward}")
         return reward
-    
-    # def compute_coms(self):
-    #     current_com_vel_robot1, current_com_acc_robot1 = None, None
-    #     current_com_robot1 = self.compute_whole_body_com(self.robot1)
-    #     if self.com_robot1 is not None: 
-    #         current_com_vel_robot1 = (current_com_robot1 - self.com_robot1) / self.cfg.dt
-    #         if self.com_vel_robot1 is not None:
-    #             current_com_acc_robot1 = (current_com_vel_robot1 - self.com_vel_robot1) / self.cfg.dt
-    #     # update coms    
-    #     self.com_robot1, self.com_vel_robot1, self.com_acc_robot1 = current_com_robot1, current_com_vel_robot1, current_com_acc_robot1
-
-    #     if self.robot2:
-    #         current_com_vel_robot2, current_com_acc_robot2 = None, None
-    #         current_com_robot2 = self.compute_whole_body_com(self.robot2)
-    #         if self.com_robot2 is not None: 
-    #             current_com_vel_robot2 = (current_com_robot2 - self.com_robot2) / self.cfg.dt
-    #             if self.com_vel_robot2 is not None:
-    #                 current_com_acc_robot2 = (current_com_vel_robot2 - self.com_vel_robot2) / self.cfg.dt
-    #         # update coms    
-    #         self.com_robot2, self.com_vel_robot2, self.com_acc_robot2 = current_com_robot2, current_com_vel_robot2, current_com_acc_robot2
 
     def compute_coms(self):
         current_com_robot1 = self.compute_whole_body_com(self.robot1)
@@ -634,37 +618,32 @@ class Env(DirectRLEnv):
         return angle_offset
     
     def reward_imitation(self) -> torch.Tensor:
-        frames = self._motion_loader_1.num_frames
-        
-        obs1 = torch.cat([self.robot1.data.body_pos_w[:, self.ref_body_index],
+        obs1 = torch.cat([self.robot1.data.body_pos_w[:, self.ref_body_index] - self.scene.env_origins,
                         self.robot1.data.body_quat_w[:, self.ref_body_index],
                         self.robot1.data.body_lin_vel_w[:, self.ref_body_index],
                         self.robot1.data.body_ang_vel_w[:, self.ref_body_index],
                         self.robot1.data.joint_pos,
                         self.robot1.data.joint_vel], dim=-1)
-
-        ref1 = torch.cat([self.ref_state_buffer_1["root_state"],
-                          self.ref_state_buffer_1["joint_pos"].reshape(self.num_envs, frames, -1),
-                          self.ref_state_buffer_1["joint_vel"].reshape(self.num_envs, frames, -1)], dim=-1)
-        
-        obs2 = torch.cat([self.robot2.data.body_pos_w[:, self.ref_body_index],
+     
+        ref1 = torch.cat([self.ref_state_buffer_1["root_state"][self.episode_length_buf],
+                          self.ref_state_buffer_1["joint_pos"][self.episode_length_buf],
+                          self.ref_state_buffer_1["joint_vel"][self.episode_length_buf]], dim=-1)
+    
+        obs2 = torch.cat([self.robot2.data.body_pos_w[:, self.ref_body_index]  - self.scene.env_origins,
                         self.robot2.data.body_quat_w[:, self.ref_body_index],
                         self.robot2.data.body_lin_vel_w[:, self.ref_body_index],
                         self.robot2.data.body_ang_vel_w[:, self.ref_body_index],
                         self.robot2.data.joint_pos,
                         self.robot2.data.joint_vel], dim=-1)
-        ref2 = torch.cat([self.ref_state_buffer_2["root_state"],
-                          self.ref_state_buffer_2["joint_pos"].reshape(self.num_envs, frames, -1),
-                          self.ref_state_buffer_2["joint_vel"].reshape(self.num_envs, frames, -1)], dim=-1)
+        ref2 = torch.cat([self.ref_state_buffer_2["root_state"][self.episode_length_buf],
+                          self.ref_state_buffer_2["joint_pos"][self.episode_length_buf],
+                          self.ref_state_buffer_2["joint_vel"][self.episode_length_buf]], dim=-1)
         
-        # reward = torch.norm(torch.cat([obs1, obs2], dim=-1) - 
-        #                     torch.cat([ref1, ref2], dim=-1)[torch.arange(self.num_envs), self.episode_length_buf], 
-        #                     dim=-1)
-        reward = torch.mean(torch.cat([obs1, obs2], dim=-1) - 
-                            torch.cat([ref1, ref2], dim=-1)[torch.arange(self.num_envs), self.episode_length_buf], 
-                            dim=-1)
-
-        return 1.0 - torch.abs(reward)
+        loss = torch.mean(torch.cat([obs1, obs2], dim=-1) - torch.cat([ref1, ref2], dim=-1), dim=-1)
+        loss = torch.abs(loss)
+        reward = torch.clamp(2 * (0.5 - loss), min=0.0, max=1.0)
+        # print(f"Imitation reward: {torch.mean(reward)}")
+        return reward
 
     def reward_ones(self) -> torch.Tensor:
         return torch.ones((self.num_envs,), dtype=torch.float32, device=self.sim.device)
@@ -682,8 +661,8 @@ class Env(DirectRLEnv):
             (
                 dof_positions,
                 dof_velocities,
-                root_position,
-                root_rotation,
+                root_position[:, 2:3], # rigid body values are in "world" space !
+                quaternion_to_tangent_and_normal(root_rotation),
                 root_linear_velocity,
                 root_angular_velocity,
             ),
