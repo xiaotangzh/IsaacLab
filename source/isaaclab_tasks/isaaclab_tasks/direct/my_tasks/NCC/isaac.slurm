@@ -27,10 +27,13 @@ path_to_your_repo="/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/d
 export PYTHONPATH=$PYTHONPATH:$path_to_your_repo
 cd "/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/my_tasks"
 
-# AMP
-python train.py --task AMP-InterHuman-2Robots --num_envs 4096 --name "motion 1 env4096 steps 8w require another pose" --steps 80000 --params 1024 --wandb --headless
+# AMP interhuman
+# python train.py --task AMP-InterHuman-2Robots --num_envs 4096 --name "motion 1 env4096 steps 8w require another pose" --steps 80000 --params 1024 --wandb --headless --disable_progressbar
 
-# PPO
+# PPO interhuman
+python train.py --task PPO-InterHuman-2Robots --num_envs 4096 --name "motion 1 env4096 steps 8w" --steps 80000 -wandb --headless --disable_progressbar
+
+# PPO stability
 # python train.py --task PPO --num_envs 4096 --name "com acc env4096 steps 300000 version 2" --steps 300000 --params 1024 --wandb --headless --disable_progressbar --checkpoint "logs/PPO/com acc env4096 steps 300000/checkpoints/best_agent.pt"
 
 # HRL
