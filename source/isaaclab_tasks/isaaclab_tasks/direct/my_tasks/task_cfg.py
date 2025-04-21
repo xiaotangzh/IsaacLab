@@ -80,8 +80,8 @@ class HRLHumanoidEnvCfg(EnvCfg1RobotHumanoid):
     reward = ["com_acc"]
     reset_strategy = "random_start"
 
-    terrain = "uneven"
-    init_root_height = 0.3
+    # terrain = "uneven"
+    init_root_height = 0.15
 
     # sync_motion = True
 
