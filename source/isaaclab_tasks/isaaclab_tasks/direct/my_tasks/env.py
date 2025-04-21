@@ -68,12 +68,13 @@ class Env(DirectRLEnv):
             (self.num_envs, self.cfg.num_amp_observations, self.cfg.amp_observation_space), device=self.device
         )
         
-        # do not lift root height in some tasks
-        if "imitation" in self.cfg.reward or self.cfg.sync_motion:
+        # do not lift root height when syncing motions
+        if self.cfg.sync_motion:
             self.cfg.init_root_height = 0.0
             self.cfg.episode_length_s = self._motion_loader_1.duration
 
-            # set reference motions
+        # set reference motions
+        if self.cfg.sync_motion or "imitation" in  self.cfg.reward:
             self.ref_state_buffer_length, self.ref_state_buffer_index = self.max_episode_length, 0
             self.ref_state_buffer_1 = {}
             self.ref_state_buffer_2 = {}
