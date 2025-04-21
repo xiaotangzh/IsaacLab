@@ -131,6 +131,7 @@ class EnvCfg1RobotSMPL(EnvCfg1Robot):
     robot_format = "SMPL"
     robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
 
+    init_root_height = 0.25
     action_clip = [-0.1, 0.1]
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
@@ -145,6 +146,7 @@ class EnvCfg2RobotsSMPL(EnvCfg2Robots):
     robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
     robot2: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot2")
 
+    init_root_height = 0.25
     action_clip = [-0.1, 0.1]
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
