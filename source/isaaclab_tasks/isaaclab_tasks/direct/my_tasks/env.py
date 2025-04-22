@@ -89,12 +89,8 @@ class Env(DirectRLEnv):
         # for center of mass
         self.default_com = None
         self.com_robot1, self.com_robot2 = zeros_3dim.clone(), zeros_3dim.clone()
-        self.com_vel_robot1 = zeros_3dim.clone()
-        self.com_acc_robot1 = zeros_3dim.clone()
-
-        # for standing reward
-        self.current_root_forward_offset = zeros_1dim.clone()
-        self.current_root_upward_offset = zeros_1dim.clone() #TODO: robot 2
+        self.com_vel_robot1, self.com_vel_robot2 = zeros_3dim.clone(), zeros_3dim.clone()
+        self.com_acc_robot1, self.com_acc_robot2 = zeros_3dim.clone(), zeros_3dim.clone()
 
         # markers
         self.green_markers = VisualizationMarkers(self.cfg.marker_green_cfg)
@@ -164,35 +160,24 @@ class Env(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]: # should return resets and time_out
         time_out = self.episode_length_buf >= self.max_episode_length - 1 # bools of envs that are time out
         if self.cfg.early_termination:
-            died_1 = self.robot1.data.body_pos_w[:, self.early_termination_body_indexes, 2] < self.termination_heights
-            died_1 = torch.max(died_1, dim=1).values
+            died = self.robot1.data.body_pos_w[:, self.early_termination_body_indexes, 2] < self.termination_heights
+            died = torch.max(died, dim=1).values
 
             # compute falling down angle
-            died_1_fall = self.compute_angle_offset("upward", self.robot1) < 0.3 #TODO: robot2 
-            died_1 = torch.max(torch.stack([died_1, died_1_fall], dim=0), dim=0).values
+            died_1_fall = self.compute_angle_offset("upward", self.robot1) < 0.3
+            died = torch.max(torch.stack([died, died_1_fall], dim=0), dim=0).values
             
             if self.robot2:
                 died_2 = self.robot2.data.body_pos_w[:, self.early_termination_body_indexes, 2] < self.termination_heights
                 died_2 = torch.max(died_2, dim=1).values
-                died = torch.max(torch.stack([died_1, died_2], dim=0), dim=0).values
-            else:
-                died = died_1
+                died_2_fall = self.compute_angle_offset("upward", self.robot2) < 0.3
+                died = torch.max(torch.stack([died, died_2, died_2_fall], dim=0), dim=0).values
             
         else: # no early termination until time out
             died = torch.zeros_like(time_out) 
-        
-        # end of reference buffer
-        if self.cfg.sync_motion and self.ref_state_buffer_index >= self.ref_state_buffer_length: #TODO: could be refined
-            died = torch.ones_like(time_out)
-            
-        # if reward is imitation, reset envs that are longer than the dataset frame length
-        if self.cfg.reward == "imitation":
-            died_imitation = self.episode_length_buf >= self._motion_loader_1.num_frames
-            died = torch.max(torch.stack([died, died_imitation], dim=0), dim=0).values
             
         return died, time_out
     
-    #TODO: adapt to two robots
     def _get_rewards(self) -> torch.Tensor:
         rewards = torch.zeros([self.num_envs], device=self.device)
 
@@ -201,7 +186,7 @@ class Env(DirectRLEnv):
         if "stand_forward" in self.cfg.reward:
             rewards += self.reward_stand_forward()
         if "imitation" in self.cfg.reward:
-            rewards += self.reward_imitation()
+            rewards += self.reward_imitation(loss_function="L2")
         if "min_vel" in self.cfg.reward:
             rewards += self.reward_min_vel()
         if "stand" in self.cfg.reward:
@@ -214,8 +199,7 @@ class Env(DirectRLEnv):
         if torch.any(nan_envs):
             nan_env_ids = torch.nonzero(nan_envs, as_tuple=False).flatten()
             print(f"Warning: NaN detected in rewards {nan_env_ids.tolist()}.")
-            # rewards[nan_env_ids] = 0.0
-            rewards[:] = 0.0
+            rewards[nan_env_ids] = 0.0
         rewards = rewards / len(self.cfg.reward)
         return rewards
 
@@ -371,13 +355,17 @@ class Env(DirectRLEnv):
         return root_state, joint_pos, joint_vel
 
     def reset_strategy_random(
-        self, env_ids: torch.Tensor, motion_loader, start: bool = False
+        self, env_ids: torch.Tensor, motion_loader: MotionLoaderHumanoid | MotionLoaderSMPL, start: bool = False
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]: # env_ids: the ids of envs to be reset
         num_samples = env_ids.shape[0]
 
         # sample random motion times (or zeros if start is True)
         if motion_loader == self._motion_loader_1: # only sample once for both robots
-            self.sample_times = np.zeros(num_samples) if start else motion_loader.sample_times(num_samples)
+            self.sample_times = np.zeros(num_samples) if start else motion_loader.sample_times(num_samples, high=0.95) # specify upper bound to avoid out of boundary in imitation learning
+        
+        # for imitation reward, use self.episode_length_buf as frame index in dataset
+        if "imitation" in self.cfg.reward:
+            self.episode_length_buf[env_ids] = torch.from_numpy(motion_loader._get_frame_index_from_time(self.sample_times)[0]).long().to(self.device)
         # sample random motions
         (
             dof_positions,
@@ -577,12 +565,18 @@ class Env(DirectRLEnv):
     def reward_com(self) -> torch.Tensor:
         self.com_robot1 = self.compute_whole_body_com(self.robot1)
         reward = 1 - torch.mean(torch.abs(self.com_robot1 - self.default_com))
-        # TODO: robot2
+        if self.robot2:
+            self.com_robot2 = self.compute_whole_body_com(self.robot2)
+            reward2 = 1 - torch.mean(torch.abs(self.com_robot2 - self.default_com))
+            reward = (reward + reward2) / 2
         # print(f"center of mass reward: {torch.mean(reward)}")
         return reward
     
     def reward_com_acc(self, decay: float=0.01) -> torch.Tensor:
         reward = torch.clip(torch.exp(-decay * torch.mean(torch.abs(self.com_acc_robot1))), min=0.0, max=1.0)
+        if self.robot2:
+            reward2 = torch.clip(torch.exp(-decay * torch.mean(torch.abs(self.com_acc_robot2))), min=0.0, max=1.0)
+            reward = (reward + reward2)
         # print(f"center of mass acc reward: {reward}")
         return reward
 
@@ -592,6 +586,13 @@ class Env(DirectRLEnv):
         current_com_acc_robot1 = (current_com_vel_robot1 - self.com_vel_robot1) / self.cfg.dt
         # update coms    
         self.com_robot1, self.com_vel_robot1, self.com_acc_robot1 = current_com_robot1, current_com_vel_robot1, current_com_acc_robot1
+
+        if self.robot2:
+            current_com_robot2 = self.compute_whole_body_com(self.robot2)
+            current_com_vel_robot2 = (current_com_robot2 - self.com_robot2) / self.cfg.dt
+            current_com_acc_robot2 = (current_com_vel_robot2 - self.com_vel_robot2) / self.cfg.dt
+            # update coms    
+            self.com_robot2, self.com_vel_robot2, self.com_acc_robot2 = current_com_robot2, current_com_vel_robot2, current_com_acc_robot2
 
     def compute_whole_body_com(self, robot: Articulation) -> torch.Tensor:
         body_masses = robot.data.default_mass.to(self.device)
@@ -651,19 +652,26 @@ class Env(DirectRLEnv):
     #     return reward
 
     # body positions
-    def reward_imitation(self) -> torch.Tensor:
-        obs1 = self.robot1.data.body_pos_w 
-        ref1 = self.ref_state_buffer_1["body_pos"][self.episode_length_buf] + self.scene.env_origins.unsqueeze(1)
-        obs2 = self.robot2.data.body_pos_w 
-        ref2 = self.ref_state_buffer_2["body_pos"][self.episode_length_buf] + self.scene.env_origins.unsqueeze(1)
+    def reward_imitation(self, loss_function: str = "MSE") -> torch.Tensor:
+        obs1_pos, obs1_rot = self.robot1.data.body_pos_w, self.robot1.data.body_quat_w
+        ref1_pos, ref1_rot = self.ref_state_buffer_1["body_pos"][self.episode_length_buf] + self.scene.env_origins.unsqueeze(1), self.ref_state_buffer_1["body_rot"][self.episode_length_buf]
 
-        self.green_markers.visualize(translations=(torch.cat([ref1, ref2], dim=-1)).reshape(-1, 3))
-        self.red_markers.visualize(translations=(torch.cat([obs1, obs2], dim=-1)).reshape(-1, 3))
+        obs2_pos, obs2_rot = self.robot2.data.body_pos_w, self.robot2.data.body_quat_w
+        ref2_pos, ref2_rot = self.ref_state_buffer_2["body_pos"][self.episode_length_buf] + self.scene.env_origins.unsqueeze(1), self.ref_state_buffer_2["body_rot"][self.episode_length_buf]
+
+        self.green_markers.visualize(translations=(torch.cat([ref1_pos, ref2_pos], dim=-1)).reshape(-1, 3))
+        self.red_markers.visualize(translations=(torch.cat([obs1_pos, obs2_pos], dim=-1)).reshape(-1, 3))
         
-        loss = torch.mean(torch.cat([obs1, obs2], dim=-1).reshape([self.num_envs, -1])
-                           - torch.cat([ref1, ref2], dim=-1).reshape([self.num_envs, -1]), dim=-1)
-        loss = torch.abs(loss)
-        reward = torch.clamp(2 * (0.5 - loss), min=0.0, max=1.0)
+        match loss_function:
+            case "MSE":
+                loss = torch.mean(torch.cat([obs1_pos, obs1_rot, obs2_pos, obs2_rot], dim=-1).reshape([self.num_envs, -1]) - 
+                                  torch.cat([ref1_pos, ref1_rot, ref2_pos, ref2_rot], dim=-1).reshape([self.num_envs, -1]), dim=-1)
+                loss = torch.abs(loss)
+                reward = torch.clamp(2 * (0.5 - loss), min=0.0, max=1.0)
+            case "L2":
+                loss = torch.mean(torch.norm(torch.cat([obs1_pos, obs2_pos], dim=-1) - 
+                                             torch.cat([ref1_pos, ref2_pos], dim=-1), dim=-1), dim=1)
+                reward = 2 * torch.clamp(0.5 - loss, min=0.0, max=1.0)
         # print(f"Imitation reward: {torch.mean(reward)}")
         return reward
 

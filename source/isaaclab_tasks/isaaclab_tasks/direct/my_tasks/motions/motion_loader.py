@@ -178,11 +178,16 @@ class MotionLoader:
     
     def _get_frame_index_from_time(self, times: np.ndarray):
         phase = np.clip(times / self.duration, 0.0, 1.0)
+        index = (phase * (self.num_frames - 1)).round(decimals=0)
+        return index
+    
+    def _from_time_to_frame(self, times: np.ndarray):
+        phase = np.clip(times / self.duration, 0.0, 1.0)
         index_0 = (phase * (self.num_frames - 1)).round(decimals=0).astype(int)
         index_1 = np.minimum(index_0 + 1, self.num_frames - 1)
         return index_0, index_1
 
-    def sample_times(self, num_samples: int, duration: float | None = None, high: float | None = None) -> np.ndarray:
+    def sample_times(self, num_samples: int, duration: float | None = None) -> np.ndarray:
         """Sample random motion times uniformly.
 
         Args:
@@ -200,7 +205,7 @@ class MotionLoader:
         assert (
             duration <= self.duration
         ), f"The specified duration ({duration}) is longer than the motion duration ({self.duration})"
-        return duration * np.random.uniform(low=0.0, high=1.0 if high is None else high, size=num_samples)
+        return duration * np.random.uniform(low=0.0, high=1.0, size=num_samples)
 
     def sample(
         self, num_samples: int, times: Optional[np.ndarray] = None, duration: float | None = None
@@ -238,7 +243,7 @@ class MotionLoader:
         if frame is not None:
             return self.relative_pose[frame]
         else: 
-            frame0, frame1 = self._get_frame_index_from_time(times)
+            frame0, frame1 = self._from_time_to_frame(times)
             return torch.cat([self.relative_pose[frame0], self.relative_pose[frame1]], dim=0)
 
     def get_all_references(self, num_samples: int = 1):

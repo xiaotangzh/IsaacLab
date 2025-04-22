@@ -74,7 +74,10 @@ AMP_DEFAULT_CONFIG = {
 
         "wandb": False,             # whether to use Weights & Biases
         "wandb_kwargs": {}          # wandb kwargs (see https://docs.wandb.ai/ref/python/init)
-    }
+    },
+
+    # HRL specific configs
+    "pretrain_high_level": False,
 }
 # [end-config-dict-torch]
 # fmt: on
@@ -275,6 +278,13 @@ class HRL(BaseAgent):
         else:
             self._amp_state_preprocessor = self._empty_preprocessor
 
+        # disable low level policy when pretraining high level policy
+        if self.cfg["pretrain_high_level"] is True:
+            for param in self.policy_low.parameters():
+                param.requires_grad = False
+            for param in self.value_low.parameters():
+                param.requires_grad = False
+
     def init(self, trainer_cfg: Optional[Mapping[str, Any]] = None) -> None:
         """Initialize the agent"""
         super().init(trainer_cfg=trainer_cfg)
@@ -359,10 +369,15 @@ class HRL(BaseAgent):
             actions, log_prob, outputs = self.policy.act({"states": states}, role="policy")
             self._current_log_prob = log_prob
 
-            actions, log_prob, outputs = self.policy_low.act({"states": states, "actions": actions}, role="policy")
-            self._current_log_prob_low = log_prob
+            if self.cfg["pretrain_high_level"] is True:
+                return actions, log_prob, outputs
+            
+            else:
+                actions, log_prob, outputs = self.policy_low.act({"states": states, "actions": actions}, role="policy")
+                self._current_log_prob_low = log_prob
+                return actions, log_prob, outputs
 
-        return actions, log_prob, outputs
+        
 
     def record_transition(
         self,
@@ -783,19 +798,23 @@ class HRL(BaseAgent):
 
                 # optimization step
                 self.optimizer.zero_grad()
-                self.optimizer_low.zero_grad()
                 self.scaler.scale(policy_loss + entropy_loss + value_loss + discriminator_loss).backward()
-                self.scaler_low.scale(policy_loss_low + entropy_loss_low + value_loss_low).backward()
+
+                if self.cfg["pretrain_high_level"] is False:
+                    self.optimizer_low.zero_grad()
+                    self.scaler_low.scale(policy_loss_low + entropy_loss_low + value_loss_low).backward()
+                
 
                 if self._grad_norm_clip > 0:
                     self.scaler.unscale_(self.optimizer)
-                    self.scaler_low.unscale_(self.optimizer_low)
                     nn.utils.clip_grad_norm_(
                         itertools.chain(
                             self.policy.parameters(), self.value.parameters(), self.discriminator.parameters()
                         ),
                         self._grad_norm_clip,
                     )
+
+                    self.scaler_low.unscale_(self.optimizer_low)
                     nn.utils.clip_grad_norm_(
                         itertools.chain(
                             self.policy_low.parameters(), self.value_low.parameters()
@@ -804,8 +823,9 @@ class HRL(BaseAgent):
                     )
 
                 self.scaler.step(self.optimizer)
-                self.scaler_low.step(self.optimizer_low)
                 self.scaler.update()
+
+                self.scaler_low.step(self.optimizer_low)
                 self.scaler_low.update()
 
                 # update cumulative losses
@@ -822,9 +842,11 @@ class HRL(BaseAgent):
             if self._learning_rate_scheduler:
                 if isinstance(self.scheduler, KLAdaptiveLR):
                     kl = torch.tensor(kl_divergences, device=self.device).mean()
-                    kl_low = torch.tensor(kl_divergences_low, device=self.device).mean()
                     self.scheduler.step(kl.item())
+
+                    kl_low = torch.tensor(kl_divergences_low, device=self.device).mean()
                     self.scheduler_low.step(kl_low.item())
+
                 else:
                     self.scheduler.step()
                     self.scheduler_low.step()

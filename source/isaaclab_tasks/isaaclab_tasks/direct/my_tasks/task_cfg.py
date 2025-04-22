@@ -32,6 +32,7 @@ class AmpInterHumanEnvCfg(EnvCfg1RobotSMPL):
     reward = ["imitation"]
     reset_strategy = "random"
 
+
 ### PPO
 @configclass
 class PPOInterHumanEnvCfg(EnvCfg1RobotSMPL):
@@ -45,8 +46,10 @@ class PPOInterHumanEnvCfg2Robots(EnvCfg2RobotsSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
     motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/1_2.npz")
 
+    sync_motion = False
+    scene = InteractiveSceneCfg(num_envs=16, env_spacing=3.0, replicate_physics=True)
     reward = ["imitation"]
-    reset_strategy = "random_start"
+    reset_strategy = "random"
 
 @configclass
 class PPOHumanoidEnvCfg(EnvCfg1RobotHumanoid):
@@ -84,4 +87,4 @@ class HRLHumanoidEnvCfg(EnvCfg1RobotHumanoid):
 
     # sync_motion = True
 
-    scene = InteractiveSceneCfg(num_envs=16, env_spacing=1.0, replicate_physics=True)
+    scene = InteractiveSceneCfg(num_envs=16, env_spacing=3.0, replicate_physics=True)
