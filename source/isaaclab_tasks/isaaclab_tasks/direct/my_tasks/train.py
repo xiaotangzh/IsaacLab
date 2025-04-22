@@ -48,7 +48,7 @@ env = gymnasium.make(args.task, cfg=cfg, render_mode="rgb_array" if args.video e
 env = wrap_env(env)
 
 # agent configuration
-from agents.amp_2robots import AMP, AMP_DEFAULT_CONFIG
+from agents.amp import AMP, AMP_DEFAULT_CONFIG
 from agents.moe import MOE, MOE_DEFAULT_CONFIG
 from agents.ppo import PPO, PPO_DEFAULT_CONFIG
 from agents.hrl import HRL
@@ -104,7 +104,7 @@ if "AMP" in args.task:
     }
     
     # instantiate the models
-    models = instantiate_AMP_2robots(env, params=args.params, device=device)
+    models = instantiate_AMP(env, params=args.params, device=device)
     agent = AMP(models=models,
                 memory=rollout_memory,  
                 cfg=agent_cfg,

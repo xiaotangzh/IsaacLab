@@ -58,6 +58,7 @@ class Env(DirectRLEnv):
         self.early_termination_body_indexes = [self.robot1.data.body_names.index(name) for name in self.cfg.termination_bodies]
         self.key_body_indexes = [self.robot1.data.body_names.index(name) for name in key_body_names]
         self.motion_dof_indexes = self._motion_loader_1.get_dof_index(self.robot1.data.joint_names)
+        self.motion_body_indexes = self._motion_loader_1.get_body_index(self.robot1.data.body_names)
         self.motion_ref_body_index = self._motion_loader_1.get_body_index([self.cfg.reference_body])[0]
         self.motion_key_body_indexes = self._motion_loader_1.get_body_index(key_body_names)
 
@@ -96,7 +97,7 @@ class Env(DirectRLEnv):
         self.current_root_upward_offset = zeros_1dim.clone() #TODO: robot 2
 
         # markers
-        # self.green_markers = VisualizationMarkers(self.cfg.marker_green_cfg)
+        self.green_markers = VisualizationMarkers(self.cfg.marker_green_cfg)
         self.red_markers = VisualizationMarkers(self.cfg.marker_red_cfg)
 
         # for relative positions
@@ -139,13 +140,9 @@ class Env(DirectRLEnv):
         self.actions = actions.clone()
 
         # visualize markers
-        # if self.default_com is not None: 
-        #     print(self.default_com.shape)
-        #     self.green_markers.visualize(translations=self.default_com)
-        if self.robot2:
-            self.red_markers.visualize(translations=torch.cat([self.com_robot1, self.com_robot2], dim=0))
-        else:
-            self.red_markers.visualize(translations=self.com_robot1)
+        if "com" in self.cfg.reward:
+            if self.robot2: self.red_markers.visualize(translations=torch.cat([self.com_robot1, self.com_robot2], dim=0))
+            else: self.red_markers.visualize(translations=self.com_robot1)
 
     def _apply_action(self):
         if self.cfg.sync_motion:
@@ -217,7 +214,8 @@ class Env(DirectRLEnv):
         if torch.any(nan_envs):
             nan_env_ids = torch.nonzero(nan_envs, as_tuple=False).flatten()
             print(f"Warning: NaN detected in rewards {nan_env_ids.tolist()}.")
-            rewards[nan_env_ids] = 0.0
+            # rewards[nan_env_ids] = 0.0
+            rewards[:] = 0.0
         rewards = rewards / len(self.cfg.reward)
         return rewards
 
@@ -293,6 +291,9 @@ class Env(DirectRLEnv):
         # reset NaN environments
         if torch.any(nan_envs):
             nan_env_ids = torch.nonzero(nan_envs, as_tuple=False).flatten()
+            if nan_env_ids.shape[0] == self.num_envs:
+                print("All environments are NaN, training process ends.")
+                sys.exit(0)
             print(f"Warning: NaN detected in envs {nan_env_ids.tolist()}, resetting these envs.")
             self._reset_idx(nan_env_ids)
             
@@ -509,6 +510,8 @@ class Env(DirectRLEnv):
             "root_state": ref_root_state.squeeze(0),
             "joint_pos": ref_dof_positions[:, :, self.motion_dof_indexes].squeeze(0),
             "joint_vel": ref_dof_velocities[:, :, self.motion_dof_indexes].squeeze(0),
+            "body_pos": ref_body_positions[:, :, self.motion_body_indexes].squeeze(0),
+            "body_rot": ref_body_rotations[:, :, self.motion_body_indexes].squeeze(0),
         })
         return
     
@@ -618,29 +621,47 @@ class Env(DirectRLEnv):
         angle_offset = current_direction[:, idx]  # [-1, 1] from opposite to same direction as target
         return angle_offset
     
-    def reward_imitation(self) -> torch.Tensor:
-        obs1 = torch.cat([self.robot1.data.body_pos_w[:, self.ref_body_index] - self.scene.env_origins,
-                        self.robot1.data.body_quat_w[:, self.ref_body_index],
-                        self.robot1.data.body_lin_vel_w[:, self.ref_body_index],
-                        self.robot1.data.body_ang_vel_w[:, self.ref_body_index],
-                        self.robot1.data.joint_pos,
-                        self.robot1.data.joint_vel], dim=-1)
+    # dof
+    # def reward_imitation(self) -> torch.Tensor:
+    #     obs1 = torch.cat([self.robot1.data.body_pos_w[:, self.ref_body_index] - self.scene.env_origins,
+    #                     self.robot1.data.body_quat_w[:, self.ref_body_index],
+    #                     self.robot1.data.body_lin_vel_w[:, self.ref_body_index],
+    #                     self.robot1.data.body_ang_vel_w[:, self.ref_body_index],
+    #                     self.robot1.data.joint_pos,
+    #                     self.robot1.data.joint_vel], dim=-1)
      
-        ref1 = torch.cat([self.ref_state_buffer_1["root_state"][self.episode_length_buf],
-                          self.ref_state_buffer_1["joint_pos"][self.episode_length_buf],
-                          self.ref_state_buffer_1["joint_vel"][self.episode_length_buf]], dim=-1)
+    #     ref1 = torch.cat([self.ref_state_buffer_1["root_state"][self.episode_length_buf],
+    #                       self.ref_state_buffer_1["joint_pos"][self.episode_length_buf],
+    #                       self.ref_state_buffer_1["joint_vel"][self.episode_length_buf]], dim=-1)
     
-        obs2 = torch.cat([self.robot2.data.body_pos_w[:, self.ref_body_index]  - self.scene.env_origins,
-                        self.robot2.data.body_quat_w[:, self.ref_body_index],
-                        self.robot2.data.body_lin_vel_w[:, self.ref_body_index],
-                        self.robot2.data.body_ang_vel_w[:, self.ref_body_index],
-                        self.robot2.data.joint_pos,
-                        self.robot2.data.joint_vel], dim=-1)
-        ref2 = torch.cat([self.ref_state_buffer_2["root_state"][self.episode_length_buf],
-                          self.ref_state_buffer_2["joint_pos"][self.episode_length_buf],
-                          self.ref_state_buffer_2["joint_vel"][self.episode_length_buf]], dim=-1)
+    #     obs2 = torch.cat([self.robot2.data.body_pos_w[:, self.ref_body_index]  - self.scene.env_origins,
+    #                     self.robot2.data.body_quat_w[:, self.ref_body_index],
+    #                     self.robot2.data.body_lin_vel_w[:, self.ref_body_index],
+    #                     self.robot2.data.body_ang_vel_w[:, self.ref_body_index],
+    #                     self.robot2.data.joint_pos,
+    #                     self.robot2.data.joint_vel], dim=-1)
+    #     ref2 = torch.cat([self.ref_state_buffer_2["root_state"][self.episode_length_buf],
+    #                       self.ref_state_buffer_2["joint_pos"][self.episode_length_buf],
+    #                       self.ref_state_buffer_2["joint_vel"][self.episode_length_buf]], dim=-1)
         
-        loss = torch.mean(torch.cat([obs1, obs2], dim=-1) - torch.cat([ref1, ref2], dim=-1), dim=-1)
+    #     loss = torch.mean(torch.cat([obs1, obs2], dim=-1) - torch.cat([ref1, ref2], dim=-1), dim=-1)
+    #     loss = torch.abs(loss)
+    #     reward = torch.clamp(2 * (0.5 - loss), min=0.0, max=1.0)
+    #     # print(f"Imitation reward: {torch.mean(reward)}")
+    #     return reward
+
+    # body positions
+    def reward_imitation(self) -> torch.Tensor:
+        obs1 = self.robot1.data.body_pos_w 
+        ref1 = self.ref_state_buffer_1["body_pos"][self.episode_length_buf] + self.scene.env_origins.unsqueeze(1)
+        obs2 = self.robot2.data.body_pos_w 
+        ref2 = self.ref_state_buffer_2["body_pos"][self.episode_length_buf] + self.scene.env_origins.unsqueeze(1)
+
+        self.green_markers.visualize(translations=(torch.cat([ref1, ref2], dim=-1)).reshape(-1, 3))
+        self.red_markers.visualize(translations=(torch.cat([obs1, obs2], dim=-1)).reshape(-1, 3))
+        
+        loss = torch.mean(torch.cat([obs1, obs2], dim=-1).reshape([self.num_envs, -1])
+                           - torch.cat([ref1, ref2], dim=-1).reshape([self.num_envs, -1]), dim=-1)
         loss = torch.abs(loss)
         reward = torch.clamp(2 * (0.5 - loss), min=0.0, max=1.0)
         # print(f"Imitation reward: {torch.mean(reward)}")

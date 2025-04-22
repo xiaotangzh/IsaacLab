@@ -102,7 +102,7 @@ class Cfg(DirectRLEnvCfg):
         prim_path="/World/Visuals/GreenMarkers",
         markers={
             "marker": sim_utils.SphereCfg(
-                radius=0.1,
+                radius=0.03,
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)),
             ),
         }
@@ -111,7 +111,7 @@ class Cfg(DirectRLEnvCfg):
         prim_path="/World/Visuals/RedMarkers",
         markers={
             "marker": sim_utils.SphereCfg(
-                radius=0.1,
+                radius=0.03,
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
             ),
         }
@@ -132,7 +132,7 @@ class EnvCfg1RobotSMPL(EnvCfg1Robot):
     robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
 
     init_root_height = 0.25
-    action_clip = [-0.1, 0.1]
+    action_clip = [-0.06, 0.06]
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
     observation_space = 151 
@@ -147,7 +147,7 @@ class EnvCfg2RobotsSMPL(EnvCfg2Robots):
     robot2: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot2")
 
     init_root_height = 0.25
-    action_clip = [-0.1, 0.1]
+    action_clip = [-0.06, 0.06]
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
     observation_space = 151 * 2
