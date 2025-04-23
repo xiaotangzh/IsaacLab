@@ -43,8 +43,8 @@ class PPOInterHumanEnvCfg(EnvCfg1RobotSMPL):
 
 @configclass
 class PPOInterHumanEnvCfg2Robots(EnvCfg2RobotsSMPL):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
-    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/1_2.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
+    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/26_2.npz")
 
     sync_motion = False
     scene = InteractiveSceneCfg(num_envs=16, env_spacing=3.0, replicate_physics=True)

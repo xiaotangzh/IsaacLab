@@ -31,7 +31,7 @@ cd "/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/my_tasks"
 # python train.py --task AMP-InterHuman-2Robots --num_envs 4096 --name "motion 1 env4096 steps 8w require another pose" --steps 80000 --params 1024 --wandb --headless --disable_progressbar
 
 # PPO interhuman
-python train.py --task PPO-InterHuman-2Robots --num_envs 4096 --name "motion 1 env4096 steps 8w" --steps 80000 -wandb --headless --disable_progressbar
+python train.py --task PPO-InterHuman-2Robots --num_envs 4096 --name "motion 26 env4096 steps 20w L2 all bodies pos" --steps 200000 --wandb --headless --disable_progressbar
 
 # PPO stability
 # python train.py --task PPO --num_envs 4096 --name "com acc env4096 steps 300000 version 2" --steps 300000 --params 1024 --wandb --headless --disable_progressbar --checkpoint "logs/PPO/com acc env4096 steps 300000/checkpoints/best_agent.pt"
