@@ -6,7 +6,7 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.utils import configclass
 
 # base configuration
-from isaaclab_tasks.direct.my_tasks.base_cfg import *
+from isaaclab_tasks.direct.my_tasks.base_env_cfg import *
 
 # motion directory
 MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions")
@@ -39,8 +39,9 @@ class PPO_InterHuman(EnvCfg1RobotSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
 
     reward = ["imitation"]
-    scene = InteractiveSceneCfg(num_envs=16, env_spacing=3.0, replicate_physics=True)
-    reset_strategy = "random"
+    scene = InteractiveSceneCfg(env_spacing=3.0, replicate_physics=True)
+    reset_strategy = "default"
+    sync_motion = True
 
 @configclass
 class PPO_InterHuman_2Robots(EnvCfg2RobotsSMPL):
@@ -48,21 +49,22 @@ class PPO_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/26_2.npz")
 
     sync_motion = False
-    scene = InteractiveSceneCfg(num_envs=16, env_spacing=3.0, replicate_physics=True)
+    scene = InteractiveSceneCfg(env_spacing=3.0, replicate_physics=True)
     reward = ["imitation"]
     reset_strategy = "random"
 
 @configclass
 class PPO_Humanoid(EnvCfg1RobotHumanoid28):
     motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_walk.npz")
-    reward = ["com_acc", "stand_forward"]
-    reset_strategy = "default"
+    reward = ["com_acc", "imitation"]
+    reset_strategy = "random_start"
+    sync_motion = False
 
-    terrain = "uneven"
-    init_root_height = 2.0
+    # terrain = "uneven"
+    # init_root_height = 2.0
     episode_length_s = 30.0
 
-    scene = InteractiveSceneCfg(num_envs=16, env_spacing=2.0, replicate_physics=True)
+    scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
 
 
 ### HRL
@@ -88,4 +90,4 @@ class HRL_Humanoid(EnvCfg1RobotHumanoid28):
 
     # sync_motion = True
 
-    scene = InteractiveSceneCfg(num_envs=16, env_spacing=3.0, replicate_physics=True)
+    scene = InteractiveSceneCfg(env_spacing=3.0, replicate_physics=True)

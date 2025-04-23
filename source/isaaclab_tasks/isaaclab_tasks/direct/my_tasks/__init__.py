@@ -22,7 +22,7 @@ gym.register(
     entry_point=f"{__name__}.env:Env",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.task_cfg:Amp_InterHuman_2Robots",
+        "env_cfg_entry_point": f"{__name__}.task_env_cfg:Amp_InterHuman_2Robots",
         "skrl_amp_cfg_entry_point": f"{agents.__name__}:skrl_amp_interhuman_cfg.yaml",
     },
 )
@@ -31,7 +31,7 @@ gym.register(
     entry_point=f"{__name__}.env:Env",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.task_cfg:Amp_InterHuman",
+        "env_cfg_entry_point": f"{__name__}.task_env_cfg:Amp_InterHuman",
         "skrl_amp_cfg_entry_point": f"{agents.__name__}:skrl_amp_interhuman_cfg.yaml",
     },
 )
@@ -42,7 +42,7 @@ gym.register(
     entry_point=f"{__name__}.env:Env",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.task_cfg:PPO_InterHuman",
+        "env_cfg_entry_point": f"{__name__}.task_env_cfg:PPO_InterHuman",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )
@@ -52,7 +52,7 @@ gym.register(
     entry_point=f"{__name__}.env:Env",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.task_cfg:PPO_Humanoid",
+        "env_cfg_entry_point": f"{__name__}.task_env_cfg:PPO_Humanoid",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )
@@ -62,7 +62,7 @@ gym.register(
     entry_point=f"{__name__}.env:Env",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.task_cfg:PPO_InterHuman_2Robots",
+        "env_cfg_entry_point": f"{__name__}.task_env_cfg:PPO_InterHuman_2Robots",
         "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
     },
 )
@@ -74,7 +74,7 @@ gym.register(
     entry_point=f"{__name__}.env:Env",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.task_cfg:HRL_InterHuman",
+        "env_cfg_entry_point": f"{__name__}.task_env_cfg:HRL_InterHuman",
         "skrl_amp_cfg_entry_point": f"{agents.__name__}:skrl_amp_interhuman_cfg.yaml",
     },
 )
@@ -83,7 +83,7 @@ gym.register(
     entry_point=f"{__name__}.env:Env",
     disable_env_checker=True,
     kwargs={
-        "env_cfg_entry_point": f"{__name__}.task_cfg:HRL_Humanoid",
+        "env_cfg_entry_point": f"{__name__}.task_env_cfg:HRL_Humanoid",
         "skrl_amp_cfg_entry_point": f"{agents.__name__}:skrl_amp_interhuman_cfg.yaml",
     },
 )

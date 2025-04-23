@@ -13,11 +13,11 @@ from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.math import quat_rotate
-from .task_cfg import BaseConfig
-from .motions.motion_loader_smpl import MotionLoader as MotionLoaderSMPL
-from .motions.motion_loader_humanoid import MotionLoader as MotionLoaderHumanoid
+from .task_env_cfg import BaseEnvCfg
+from .motions.motion_loader import MotionLoader, MotionLoaderHumanoid28, MotionLoaderSMPL
 import sys
 import random
+import math
 
 # marker
 from isaaclab.markers import VisualizationMarkersCfg, VisualizationMarkers
@@ -30,9 +30,9 @@ from isaaclab.terrains import TerrainImporter
 import isaaclab.utils.math as math_utils
 
 class Env(DirectRLEnv):
-    cfg: BaseConfig
+    cfg: BaseEnvCfg
 
-    def __init__(self, cfg: BaseConfig, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: BaseEnvCfg, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
         # action offset and scale
@@ -44,7 +44,7 @@ class Env(DirectRLEnv):
         self.termination_heights = torch.tensor(self.cfg.termination_heights, device=self.device)
 
         # load motion
-        if self.cfg.robot_format == "humanoid": MotionLoader = MotionLoaderHumanoid
+        if self.cfg.robot_format == "humanoid": MotionLoader = MotionLoaderHumanoid28
         else: MotionLoader = MotionLoaderSMPL
         self._motion_loader_1 = MotionLoader(motion_file=self.cfg.motion_file_1, device=self.device)
         self._motion_loader_2 = MotionLoader(motion_file=self.cfg.motion_file_2, device=self.device) if hasattr(self.cfg, "motion_file_2") else None 
@@ -74,13 +74,20 @@ class Env(DirectRLEnv):
             self.cfg.init_root_height = 0.0
             self.cfg.episode_length_s = self._motion_loader_1.duration
 
+        # markers
+        self.green_markers = VisualizationMarkers(self.cfg.marker_green_cfg)
+        self.red_markers = VisualizationMarkers(self.cfg.marker_red_cfg)
+        self.green_markers_small = VisualizationMarkers(self.cfg.marker_green_small_cfg)
+        self.red_markers_small = VisualizationMarkers(self.cfg.marker_red_small_cfg)
+
         # set reference motions
-        if self.cfg.sync_motion or "imitation" in  self.cfg.reward:
+        if self.cfg.sync_motion or "imitation" in self.cfg.reward:
             self.ref_state_buffer_length, self.ref_state_buffer_index = self.max_episode_length, 0
             self.ref_state_buffer_1 = {}
             self.ref_state_buffer_2 = {}
             self.reset_reference_buffer(self._motion_loader_1, self.ref_state_buffer_1)
             if hasattr(self.cfg, "robot2"): self.reset_reference_buffer(self._motion_loader_2, self.ref_state_buffer_2)
+            
 
         # other properties
         zeros_3dim = torch.zeros([self.num_envs, 3], device=self.device, dtype=torch.float32)
@@ -92,9 +99,6 @@ class Env(DirectRLEnv):
         self.com_vel_robot1, self.com_vel_robot2 = zeros_3dim.clone(), zeros_3dim.clone()
         self.com_acc_robot1, self.com_acc_robot2 = zeros_3dim.clone(), zeros_3dim.clone()
 
-        # markers
-        self.green_markers = VisualizationMarkers(self.cfg.marker_green_cfg)
-        self.red_markers = VisualizationMarkers(self.cfg.marker_red_cfg)
 
         # for relative positions
         if self.cfg.require_relative_pose:
@@ -103,8 +107,10 @@ class Env(DirectRLEnv):
             self._motion_loader_2.relative_pose = self.precompute_relative_body_positions(source=self._motion_loader_1, target=self._motion_loader_2)
             
     def _setup_scene(self):
+        # add robots
         self.robot1 = Articulation(self.cfg.robot1)
         self.robot2 = Articulation(self.cfg.robot2) if hasattr(self.cfg, "robot2") else None
+
         # add ground plane
         if self.cfg.terrain == "uneven":
             TerrainImporter(self.cfg.terrain_cfg)
@@ -119,12 +125,15 @@ class Env(DirectRLEnv):
                     ),
                 ),
             )
+
         # clone and replicate
         self.scene.clone_environments(copy_from_source=False)
+
         # add articulation to scene
         self.scene.articulations["robot1"] = self.robot1
         if self.robot2:
             self.scene.articulations["robot2"] = self.robot2
+
         # add lights
         light_cfg = sim_utils.DomeLightCfg(intensity=2000.0, color=(0.75, 0.75, 0.75))
         light_cfg.func("/World/Light", light_cfg)
@@ -134,11 +143,6 @@ class Env(DirectRLEnv):
         if self.action_clip[0] and self.action_clip[1]:
             actions = torch.clip(actions, min=self.action_clip[0], max=self.action_clip[1]) # clip the actions
         self.actions = actions.clone()
-
-        # visualize markers
-        if "com" in self.cfg.reward:
-            if self.robot2: self.red_markers.visualize(translations=torch.cat([self.com_robot1, self.com_robot2], dim=0))
-            else: self.red_markers.visualize(translations=self.com_robot1)
 
     def _apply_action(self):
         if self.cfg.sync_motion:
@@ -195,11 +199,14 @@ class Env(DirectRLEnv):
             self.compute_coms()
             rewards += self.reward_com_acc()
         
+        # check NaN in rewards
         nan_envs = check_nan(rewards)
         if torch.any(nan_envs):
             nan_env_ids = torch.nonzero(nan_envs, as_tuple=False).flatten()
             print(f"Warning: NaN detected in rewards {nan_env_ids.tolist()}.")
             rewards[nan_env_ids] = 0.0
+
+        # average rewards range [0,1]
         rewards = rewards / len(self.cfg.reward)
         return rewards
 
@@ -355,7 +362,7 @@ class Env(DirectRLEnv):
         return root_state, joint_pos, joint_vel
 
     def reset_strategy_random(
-        self, env_ids: torch.Tensor, motion_loader: MotionLoaderHumanoid | MotionLoaderSMPL, start: bool = False
+        self, env_ids: torch.Tensor, motion_loader: MotionLoader, start: bool = False
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]: # env_ids: the ids of envs to be reset
         num_samples = env_ids.shape[0]
 
@@ -523,8 +530,8 @@ class Env(DirectRLEnv):
                                        None, robot._ALL_INDICES)
         
     def precompute_relative_body_positions(self, 
-                                           source: MotionLoaderSMPL | MotionLoaderHumanoid,
-                                           target: MotionLoaderSMPL | MotionLoaderHumanoid) -> torch.Tensor:
+                                           source: MotionLoader,
+                                           target: MotionLoader) -> torch.Tensor:
         source_body_positions = source.get_all_references()[2][0] # (frames, body num, 3)
         target_root_positions = target.get_all_references()[2][0][:,self.motion_ref_body_index] # (frames, 3)
         target_root_rotations = target.get_all_references()[3][0][:,self.motion_ref_body_index] # (frames, 4)
@@ -587,6 +594,13 @@ class Env(DirectRLEnv):
         # update coms    
         self.com_robot1, self.com_vel_robot1, self.com_acc_robot1 = current_com_robot1, current_com_vel_robot1, current_com_acc_robot1
 
+        # test
+        # whole_body_com_vel = self._compute_whole_body_com_vel(self.robot1)
+        # print(self.com_vel_robot1[0], whole_body_com_vel[0])
+        # zmp_2d = self.compute_zmp(self.robot1)
+        # zmp_3d = torch.cat([zmp_2d.to(self.device), torch.zeros(zmp_2d.shape[0], 1).to(self.device)], dim=1)
+        # self.green_markers.visualize(translations=zmp_3d)
+
         if self.robot2:
             current_com_robot2 = self.compute_whole_body_com(self.robot2)
             current_com_vel_robot2 = (current_com_robot2 - self.com_robot2) / self.cfg.dt
@@ -594,16 +608,52 @@ class Env(DirectRLEnv):
             # update coms    
             self.com_robot2, self.com_vel_robot2, self.com_acc_robot2 = current_com_robot2, current_com_vel_robot2, current_com_acc_robot2
 
+        # visualize markers
+        translations = torch.cat([self.com_robot1, self.com_robot2], dim=0) if self.robot2 else self.com_robot1
+        scales = 1 + torch.sigmoid(torch.norm(translations, dim=1, keepdim=True)).repeat(1, 3)
+        self.red_markers.visualize(translations=self.com_robot1, scales=scales)
+
     def compute_whole_body_com(self, robot: Articulation) -> torch.Tensor:
-        body_masses = robot.data.default_mass.to(self.device)
-        
-        body_com_positions = robot.data.body_com_pos_w
-        
+        # whole_body_com = Σ(bone_mass × bone_com) / total_mass
+        body_masses = robot.data.default_mass.to(self.device) # [num_envs, num_bodies]
         total_mass = body_masses.sum(dim=1, keepdim=True)  # [num_envs, 1]
+        body_com_positions = robot.data.body_com_pos_w # [num_envs, num_bodies, 3]
         weighted_positions = body_com_positions * body_masses.unsqueeze(-1)  # [num_envs, num_bodies, 3]
         whole_body_com = weighted_positions.sum(dim=1) / total_mass  # [num_envs, 3]
+        return whole_body_com # [num_envs, 3]
+    
+    def _compute_whole_body_com_vel(self, robot: Articulation):
+        # test
+        body_masses = robot.data.default_mass.to(self.device) # [num_envs, num_bodies]
+        total_mass = body_masses.sum(dim=1, keepdim=True)  # [num_envs, 1]
+        body_com_velocities = robot.data.body_com_lin_vel_w # [num_envs, num_bodies, 3]
+        weighted_velocities = body_com_velocities * body_masses.unsqueeze(-1)  # [num_envs, num_bodies, 3]
+        whole_body_com_vel = weighted_velocities.sum(dim=1) / total_mass  # [num_envs, 3]
+        return whole_body_com_vel # [num_envs, 3]
+    
+    def compute_zmp(self, robot: Articulation):
+        # Zero Moment Point
+
+        # 获取各连杆参数
+        masses = robot.data.default_mass.to(self.device)  # [num_instances, num_bodies]
+        poses = robot.data.body_com_state_w[..., :3] # [..., num_bodies, 3]
+        accs = robot.data.body_acc_w  # [..., num_bodies, 6]
         
-        return whole_body_com
+        # 提取线性加速度
+        lin_acc = accs[..., 0:3]  # [ẍ, ÿ, z̈]
+        
+        # 计算分子分母
+        numerator_x = torch.sum(masses * (9.8 + lin_acc[..., 2]) * poses[..., 0] - 
+                            masses * lin_acc[..., 0] * poses[..., 2], dim=-1)
+        numerator_y = torch.sum(masses * (9.8 + lin_acc[..., 2]) * poses[..., 1] - 
+                            masses * lin_acc[..., 1] * poses[..., 2], dim=-1)
+        denominator = torch.sum(masses * (9.8 + lin_acc[..., 2]), dim=-1)
+        
+        # 计算ZMP坐标
+        zmp_x = numerator_x / denominator
+        zmp_y = numerator_y / denominator
+        
+        return torch.stack([zmp_x, zmp_y], dim=-1)  # [num_instances, 2]
     
     def compute_angle_offset(self, target_direction, robot: Articulation) -> torch.Tensor:
         if target_direction == "forward":
@@ -621,37 +671,8 @@ class Env(DirectRLEnv):
         current_direction = quat_rotate(current_quat, target_direction)
         angle_offset = current_direction[:, idx]  # [-1, 1] from opposite to same direction as target
         return angle_offset
-    
-    # dof
-    # def reward_imitation(self) -> torch.Tensor:
-    #     obs1 = torch.cat([self.robot1.data.body_pos_w[:, self.ref_body_index] - self.scene.env_origins,
-    #                     self.robot1.data.body_quat_w[:, self.ref_body_index],
-    #                     self.robot1.data.body_lin_vel_w[:, self.ref_body_index],
-    #                     self.robot1.data.body_ang_vel_w[:, self.ref_body_index],
-    #                     self.robot1.data.joint_pos,
-    #                     self.robot1.data.joint_vel], dim=-1)
-     
-    #     ref1 = torch.cat([self.ref_state_buffer_1["root_state"][self.episode_length_buf],
-    #                       self.ref_state_buffer_1["joint_pos"][self.episode_length_buf],
-    #                       self.ref_state_buffer_1["joint_vel"][self.episode_length_buf]], dim=-1)
-    
-    #     obs2 = torch.cat([self.robot2.data.body_pos_w[:, self.ref_body_index]  - self.scene.env_origins,
-    #                     self.robot2.data.body_quat_w[:, self.ref_body_index],
-    #                     self.robot2.data.body_lin_vel_w[:, self.ref_body_index],
-    #                     self.robot2.data.body_ang_vel_w[:, self.ref_body_index],
-    #                     self.robot2.data.joint_pos,
-    #                     self.robot2.data.joint_vel], dim=-1)
-    #     ref2 = torch.cat([self.ref_state_buffer_2["root_state"][self.episode_length_buf],
-    #                       self.ref_state_buffer_2["joint_pos"][self.episode_length_buf],
-    #                       self.ref_state_buffer_2["joint_vel"][self.episode_length_buf]], dim=-1)
-        
-    #     loss = torch.mean(torch.cat([obs1, obs2], dim=-1) - torch.cat([ref1, ref2], dim=-1), dim=-1)
-    #     loss = torch.abs(loss)
-    #     reward = torch.clamp(2 * (0.5 - loss), min=0.0, max=1.0)
-    #     # print(f"Imitation reward: {torch.mean(reward)}")
-    #     return reward
 
-    # body positions
+    # body positions imitation
     def reward_imitation(self, loss_function: str = "MSE") -> torch.Tensor:
         obs_pos, obs_rot = self.robot1.data.body_pos_w, self.robot1.data.body_quat_w # (num_envs, bodies, 3/4)
         ref_pos, ref_rot = self.ref_state_buffer_1["body_pos"][self.episode_length_buf] + self.scene.env_origins.unsqueeze(1), self.ref_state_buffer_1["body_rot"][self.episode_length_buf]
@@ -662,8 +683,8 @@ class Env(DirectRLEnv):
             obs_pos, obs_rot = torch.cat([obs_pos, obs2_pos], dim=1), torch.cat([obs_rot, obs2_rot], dim=1) # (num_envs, 2 * bodies, 3/4)
             ref_pos, ref_rot = torch.cat([ref_pos, ref2_pos], dim=1), torch.cat([ref_rot, ref2_rot], dim=1) # (num_envs, 2 * bodies, 3/4)
 
-        self.green_markers.visualize(translations=ref_pos.reshape(-1, 3))
-        self.red_markers.visualize(translations=obs_pos.reshape(-1, 3))
+        self.green_markers_small.visualize(translations=ref_pos.reshape(-1, 3))
+        self.red_markers_small.visualize(translations=obs_pos.reshape(-1, 3))
         
         match loss_function:
             case "MSE":

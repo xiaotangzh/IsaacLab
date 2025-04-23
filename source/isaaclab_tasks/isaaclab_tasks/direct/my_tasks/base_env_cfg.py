@@ -31,7 +31,7 @@ MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions"
 
 
 @configclass
-class BaseConfig(DirectRLEnvCfg):
+class BaseEnvCfg(DirectRLEnvCfg):
     # env
     observation_space: int = MISSING
     action_space: int = MISSING
@@ -73,7 +73,7 @@ class BaseConfig(DirectRLEnvCfg):
 
     # scene
     terrain: str = "default"
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=16, env_spacing=7.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(env_spacing=7.0, replicate_physics=True)
     terrain_cfg = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
@@ -102,7 +102,7 @@ class BaseConfig(DirectRLEnvCfg):
         prim_path="/World/Visuals/GreenMarkers",
         markers={
             "marker": sim_utils.SphereCfg(
-                radius=0.03,
+                radius=0.1,
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)),
             ),
         }
@@ -111,17 +111,35 @@ class BaseConfig(DirectRLEnvCfg):
         prim_path="/World/Visuals/RedMarkers",
         markers={
             "marker": sim_utils.SphereCfg(
+                radius=0.1,
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+            ),
+        }
+    )
+    marker_green_small_cfg = VisualizationMarkersCfg(
+        prim_path="/World/Visuals/GreenMarkers",
+        markers={
+            "marker": sim_utils.SphereCfg(
+                radius=0.03,
+                visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 1.0, 0.0)),
+            ),
+        }
+    )
+    marker_red_small_cfg = VisualizationMarkersCfg(
+        prim_path="/World/Visuals/GreenMarkers",
+        markers={
+            "marker": sim_utils.SphereCfg(
                 radius=0.03,
                 visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
             ),
         }
     )
 
-class EnvCfg1Robot(BaseConfig):
+class EnvCfg1Robot(BaseEnvCfg):
     robot1: ArticulationCfg = MISSING
     motion_file_1: str = MISSING
 
-class EnvCfg2Robots(BaseConfig):
+class EnvCfg2Robots(BaseEnvCfg):
     robot1: ArticulationCfg = MISSING
     robot2: ArticulationCfg = MISSING
     motion_file_1: str = MISSING
