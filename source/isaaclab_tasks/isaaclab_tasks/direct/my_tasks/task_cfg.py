@@ -36,10 +36,11 @@ class AmpInterHumanEnvCfg(EnvCfg1RobotSMPL):
 ### PPO
 @configclass
 class PPOInterHumanEnvCfg(EnvCfg1RobotSMPL):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
 
-    reward = ["com acc"]
-    reset_strategy = "default"
+    reward = ["imitation"]
+    scene = InteractiveSceneCfg(num_envs=16, env_spacing=3.0, replicate_physics=True)
+    reset_strategy = "random"
 
 @configclass
 class PPOInterHumanEnvCfg2Robots(EnvCfg2RobotsSMPL):

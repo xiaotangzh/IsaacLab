@@ -653,24 +653,26 @@ class Env(DirectRLEnv):
 
     # body positions
     def reward_imitation(self, loss_function: str = "MSE") -> torch.Tensor:
-        obs1_pos, obs1_rot = self.robot1.data.body_pos_w, self.robot1.data.body_quat_w
-        ref1_pos, ref1_rot = self.ref_state_buffer_1["body_pos"][self.episode_length_buf] + self.scene.env_origins.unsqueeze(1), self.ref_state_buffer_1["body_rot"][self.episode_length_buf]
+        obs_pos, obs_rot = self.robot1.data.body_pos_w, self.robot1.data.body_quat_w # (num_envs, bodies, 3/4)
+        ref_pos, ref_rot = self.ref_state_buffer_1["body_pos"][self.episode_length_buf] + self.scene.env_origins.unsqueeze(1), self.ref_state_buffer_1["body_rot"][self.episode_length_buf]
 
-        obs2_pos, obs2_rot = self.robot2.data.body_pos_w, self.robot2.data.body_quat_w
-        ref2_pos, ref2_rot = self.ref_state_buffer_2["body_pos"][self.episode_length_buf] + self.scene.env_origins.unsqueeze(1), self.ref_state_buffer_2["body_rot"][self.episode_length_buf]
+        if self.robot2:
+            obs2_pos, obs2_rot = self.robot2.data.body_pos_w, self.robot2.data.body_quat_w
+            ref2_pos, ref2_rot = self.ref_state_buffer_2["body_pos"][self.episode_length_buf] + self.scene.env_origins.unsqueeze(1), self.ref_state_buffer_2["body_rot"][self.episode_length_buf]
+            obs_pos, obs_rot = torch.cat([obs_pos, obs2_pos], dim=1), torch.cat([obs_rot, obs2_rot], dim=1) # (num_envs, 2 * bodies, 3/4)
+            ref_pos, ref_rot = torch.cat([ref_pos, ref2_pos], dim=1), torch.cat([ref_rot, ref2_rot], dim=1) # (num_envs, 2 * bodies, 3/4)
 
-        self.green_markers.visualize(translations=(torch.cat([ref1_pos, ref2_pos], dim=-1)).reshape(-1, 3))
-        self.red_markers.visualize(translations=(torch.cat([obs1_pos, obs2_pos], dim=-1)).reshape(-1, 3))
+        self.green_markers.visualize(translations=ref_pos.reshape(-1, 3))
+        self.red_markers.visualize(translations=obs_pos.reshape(-1, 3))
         
         match loss_function:
             case "MSE":
-                loss = torch.mean(torch.cat([obs1_pos, obs1_rot, obs2_pos, obs2_rot], dim=-1).reshape([self.num_envs, -1]) - 
-                                  torch.cat([ref1_pos, ref1_rot, ref2_pos, ref2_rot], dim=-1).reshape([self.num_envs, -1]), dim=-1)
+                loss = torch.mean(obs_pos.reshape([self.num_envs, -1]) - 
+                                  ref_pos.reshape([self.num_envs, -1]), dim=1)
                 loss = torch.abs(loss)
                 reward = torch.clamp(2 * (0.5 - loss), min=0.0, max=1.0)
             case "L2":
-                loss = torch.mean(torch.norm(torch.cat([obs1_pos, obs2_pos], dim=-1) - 
-                                             torch.cat([ref1_pos, ref2_pos], dim=-1), dim=-1), dim=1)
+                loss = torch.mean(torch.norm(obs_pos - ref_pos, dim=-1), dim=1)
                 reward = 2 * torch.clamp(0.5 - loss, min=0.0, max=1.0)
         # print(f"Imitation reward: {torch.mean(reward)}")
         return reward
