@@ -13,7 +13,7 @@ MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions"
 
 ### AMP
 @configclass
-class AmpInterHumanEnvCfg2Robots(EnvCfg2RobotsSMPL):
+class Amp_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
     motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/1_2.npz")
 
@@ -26,7 +26,7 @@ class AmpInterHumanEnvCfg2Robots(EnvCfg2RobotsSMPL):
     amp_observation_space =  2 * 151
 
 @configclass
-class AmpInterHumanEnvCfg(EnvCfg1RobotSMPL):
+class Amp_InterHuman(EnvCfg1RobotSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
 
     reward = ["imitation"]
@@ -35,7 +35,7 @@ class AmpInterHumanEnvCfg(EnvCfg1RobotSMPL):
 
 ### PPO
 @configclass
-class PPOInterHumanEnvCfg(EnvCfg1RobotSMPL):
+class PPO_InterHuman(EnvCfg1RobotSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
 
     reward = ["imitation"]
@@ -43,7 +43,7 @@ class PPOInterHumanEnvCfg(EnvCfg1RobotSMPL):
     reset_strategy = "random"
 
 @configclass
-class PPOInterHumanEnvCfg2Robots(EnvCfg2RobotsSMPL):
+class PPO_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
     motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/26_2.npz")
 
@@ -53,7 +53,7 @@ class PPOInterHumanEnvCfg2Robots(EnvCfg2RobotsSMPL):
     reset_strategy = "random"
 
 @configclass
-class PPOHumanoidEnvCfg(EnvCfg1RobotHumanoid):
+class PPO_Humanoid(EnvCfg1RobotHumanoid28):
     motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_walk.npz")
     reward = ["com_acc", "stand_forward"]
     reset_strategy = "default"
@@ -67,7 +67,7 @@ class PPOHumanoidEnvCfg(EnvCfg1RobotHumanoid):
 
 ### HRL
 @configclass
-class HRLInterHumanEnvCfg(EnvCfg1RobotSMPL):
+class HRL_InterHuman(EnvCfg1RobotSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/6929_1.npz")
 
     reward = ["com_acc"]
@@ -77,7 +77,7 @@ class HRLInterHumanEnvCfg(EnvCfg1RobotSMPL):
     init_root_height = 0.3
 
 @configclass
-class HRLHumanoidEnvCfg(EnvCfg1RobotHumanoid):
+class HRL_Humanoid(EnvCfg1RobotHumanoid28):
     motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_run.npz")
 
     reward = ["com_acc"]

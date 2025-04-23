@@ -13,7 +13,7 @@ from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
 from isaaclab.utils.math import quat_rotate
-from .task_cfg import Cfg
+from .task_cfg import BaseConfig
 from .motions.motion_loader_smpl import MotionLoader as MotionLoaderSMPL
 from .motions.motion_loader_humanoid import MotionLoader as MotionLoaderHumanoid
 import sys
@@ -30,9 +30,9 @@ from isaaclab.terrains import TerrainImporter
 import isaaclab.utils.math as math_utils
 
 class Env(DirectRLEnv):
-    cfg: Cfg
+    cfg: BaseConfig
 
-    def __init__(self, cfg: Cfg, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: BaseConfig, render_mode: str | None = None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
 
         # action offset and scale

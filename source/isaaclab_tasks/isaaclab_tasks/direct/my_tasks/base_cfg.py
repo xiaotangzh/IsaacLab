@@ -31,7 +31,7 @@ MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions"
 
 
 @configclass
-class Cfg(DirectRLEnvCfg):
+class BaseConfig(DirectRLEnvCfg):
     # env
     observation_space: int = MISSING
     action_space: int = MISSING
@@ -117,11 +117,11 @@ class Cfg(DirectRLEnvCfg):
         }
     )
 
-class EnvCfg1Robot(Cfg):
+class EnvCfg1Robot(BaseConfig):
     robot1: ArticulationCfg = MISSING
     motion_file_1: str = MISSING
 
-class EnvCfg2Robots(Cfg):
+class EnvCfg2Robots(BaseConfig):
     robot1: ArticulationCfg = MISSING
     robot2: ArticulationCfg = MISSING
     motion_file_1: str = MISSING
@@ -156,7 +156,7 @@ class EnvCfg2RobotsSMPL(EnvCfg2Robots):
     key_body_names = ["L_Hand", "R_Hand", "L_Toe", "R_Toe", "Head"]
     reference_body = "Pelvis"
 
-class EnvCfg1RobotHumanoid(EnvCfg1Robot):
+class EnvCfg1RobotHumanoid28(EnvCfg1Robot):
     robot_format = "humanoid"
     robot1 = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot1").replace(
         actuators={
@@ -178,7 +178,7 @@ class EnvCfg1RobotHumanoid(EnvCfg1Robot):
     key_body_names = ["right_hand", "left_hand", "right_foot", "left_foot"]
     reference_body = "torso"
 
-class EnvCfg2RobotHumanoid(EnvCfg2Robots):
+class EnvCfg2RobotHumanoid28(EnvCfg2Robots):
     robot_format = "humanoid"
     robot1 = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot1").replace(
         actuators={
