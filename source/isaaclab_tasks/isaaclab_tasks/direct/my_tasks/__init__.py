@@ -35,6 +35,15 @@ gym.register(
         "skrl_amp_cfg_entry_point": f"{agents.__name__}:skrl_amp_interhuman_cfg.yaml",
     },
 )
+gym.register(
+    id="AMP-Humanoid",
+    entry_point=f"{__name__}.env:Env",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.task_env_cfg:AMP_Humanoid",
+        # "skrl_cfg_entry_point": f"{agents.__name__}:skrl_ppo_cfg.yaml",
+    },
+)
 
 ### PPO
 gym.register(

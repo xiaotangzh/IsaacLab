@@ -30,11 +30,14 @@ cd "/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/my_tasks"
 # AMP interhuman
 # python train.py --task AMP-InterHuman-2Robots --num_envs 4096 --name "motion 1 env4096 steps 8w require another pose" --steps 80000 --params 1024 --wandb --headless --disable_progressbar
 
+# AMP humanoid
+python train.py --task AMP-Humanoid --num_envs 4096 --name "walk env4096 steps 20w" --steps 200000 --params 1024 --wandb --headless --disable_progressbar
+
 # PPO interhuman
-python train.py --task PPO-InterHuman-2Robots --num_envs 4096 --name "motion 26 env4096 steps 20w L2 all bodies pos" --steps 200000 --wandb --headless --disable_progressbar
+# python train.py --task PPO-InterHuman-2Robots --num_envs 4096 --name "motion 26 env4096 steps 20w L2 all bodies pos" --steps 200000 --wandb --headless --disable_progressbar
 
 # PPO stability
 # python train.py --task PPO --num_envs 4096 --name "com acc env4096 steps 300000 version 2" --steps 300000 --params 1024 --wandb --headless --disable_progressbar --checkpoint "logs/PPO/com acc env4096 steps 300000/checkpoints/best_agent.pt"
 
 # HRL
-# python train.py --task HRL-Humanoid --num_envs 4096 --name "run flat terrain 0.15 env4096 steps 20w" --steps 200000 --params 1024 --wandb --headless --disable_progressbar
+# python train.py --task HRL-Humanoid --num_envs 4096 --name "walk com_acc imitation env4096 steps 20w" --steps 200000 --params 1024 --wandb --headless --disable_progressbar

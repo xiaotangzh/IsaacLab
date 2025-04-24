@@ -32,6 +32,14 @@ class Amp_InterHuman(EnvCfg1RobotSMPL):
     reward = ["imitation"]
     reset_strategy = "random"
 
+@configclass
+class AMP_Humanoid(EnvCfg1RobotHumanoid28):
+    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_walk.npz")
+    reward = ["imitation"]
+    reset_strategy = "random"
+    sync_motion = False
+
+    scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
 
 ### PPO
 @configclass
@@ -80,14 +88,14 @@ class HRL_InterHuman(EnvCfg1RobotSMPL):
 
 @configclass
 class HRL_Humanoid(EnvCfg1RobotHumanoid28):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_run.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_walk.npz")
 
-    reward = ["com_acc"]
+    reward = ["com_acc", "imitation"]
     reset_strategy = "random_start"
 
     # terrain = "uneven"
-    init_root_height = 0.15
+    # init_root_height = 0.15
 
     # sync_motion = True
 
-    scene = InteractiveSceneCfg(env_spacing=3.0, replicate_physics=True)
+    scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
