@@ -2,54 +2,8 @@ from skrl.models.torch import DeterministicMixin, GaussianMixin, Model
 import torch
 from torch import nn
 
-# ==================== Policy Model (Gaussian Policy) ====================
 class Policy(GaussianMixin, Model):
-    def __init__(self, observation_space, action_space, params, CLIP=None, device=None):
-        Model.__init__(self, observation_space, action_space, device)
-        GaussianMixin.__init__(self, 
-                              clip_actions=False,
-                              clip_log_std=True,
-                              min_log_std=-20.0,
-                              max_log_std=2.0,
-                            #   initial_log_std=-2.9,
-                            #   fixed_log_std=True
-                              )
-
-        # Network layers (1024 -> 512)
-        self.net = nn.Sequential(
-            nn.Linear(observation_space, params),
-            nn.ReLU(),
-            nn.Linear(params, int(params/2)),
-            nn.ReLU(),
-            nn.Linear(int(params/2), action_space)  # Output actions
-        )
-        self.log_std_parameter = nn.Parameter(torch.zeros(action_space)) #todo different from default yaml
-
-    def compute(self, inputs, role):
-        return self.net(inputs["states"]), self.log_std_parameter, {}
-
-# ==================== Value Model (Deterministic) ====================
-class Value(DeterministicMixin, Model):
-    def __init__(self, observation_space, action_space, params, device=None):
-        Model.__init__(self, observation_space, action_space, device)
-        DeterministicMixin.__init__(self, clip_actions=False)
-
-        # Network layers (1024 -> 512 -> 1)
-        self.net = nn.Sequential(
-            nn.Linear(observation_space, params),
-            nn.ReLU(),
-            nn.Linear(params, int(params/2)),
-            nn.ReLU(),
-            nn.Linear(int(params/2), 1)  # Output single value
-        )
-
-    def compute(self, inputs, role):
-        states = inputs["states"]
-        return self.net(states), {}  # (value, None)
-
-# ==================== Policy Model (Gaussian Policy) ====================
-class LowLevelPolicy(GaussianMixin, Model):
-    def __init__(self, observation_space, action_space, params, CLIP=None, device=None):
+    def __init__(self, observation_space, action_space, params, pretrained_policy: Model, device=None):
         Model.__init__(self, observation_space, action_space, device)
         GaussianMixin.__init__(self, 
                               clip_actions=False,
@@ -57,8 +11,11 @@ class LowLevelPolicy(GaussianMixin, Model):
                               min_log_std=-20.0,
                               max_log_std=2.0,
                               )
+        
+        self.pretrained_policy = pretrained_policy
+        for p in self.pretrained_policy.parameters():
+            p.requires_grad = False
 
-        # Network layers (1024 -> 512)
         self.net = nn.Sequential(
             nn.Linear(observation_space, params),
             nn.ReLU(),
@@ -69,17 +26,15 @@ class LowLevelPolicy(GaussianMixin, Model):
         self.log_std_parameter = nn.Parameter(torch.zeros(action_space)) 
 
     def compute(self, inputs, role):
-        states = torch.cat([inputs["states"], inputs["actions"]], dim=-1)
-        actions = self.net(states) + inputs["actions"]
-        return actions, self.log_std_parameter, {}
+        actions = self.pretrained_policy(inputs["states"])[0]
+        actions_delta = self.net(actions)
+        return actions + actions_delta, self.log_std_parameter, {}
 
-# ==================== Value Model (Deterministic) ====================
-class LowLevelValue(DeterministicMixin, Model):
+class Value(DeterministicMixin, Model):
     def __init__(self, observation_space, action_space, params, device=None):
         Model.__init__(self, observation_space, action_space, device)
         DeterministicMixin.__init__(self, clip_actions=False)
 
-        # Network layers (1024 -> 512 -> 1)
         self.net = nn.Sequential(
             nn.Linear(observation_space, params),
             nn.ReLU(),
@@ -89,33 +44,11 @@ class LowLevelValue(DeterministicMixin, Model):
         )
 
     def compute(self, inputs, role):
-        states = torch.cat([inputs["states"], inputs["actions"]], dim=-1)
-        return self.net(states), {}  # (value, None)
-
-# ==================== Discriminator Model (Deterministic) ====================
-class Discriminator(DeterministicMixin, Model):
-    def __init__(self, observation_space, action_space, params, device=None):
-        Model.__init__(self, observation_space, action_space, device)
-        DeterministicMixin.__init__(self, clip_actions=False)
-
-        # Network layers (same as Value network)
-        self.net = nn.Sequential(
-            nn.Linear(observation_space, params),
-            nn.ReLU(),
-            nn.Linear(params, int(params/2)),
-            nn.ReLU(),
-            nn.Linear(int(params/2), 1)  
-        )
-
-    def compute(self, inputs, role):
         states = inputs["states"]
         return self.net(states), {} 
     
-def instantiate_HRL(env, params: int=1, device: torch.device | None=None):
+def instantiate_HRL(env, pretrained_policy: Model, params: int=1, device: torch.device | None=None):
     models = {}
-    models["policy"] = Policy(env.observation_space.shape[0], env.action_space.shape[0], params=params, device=device)
+    models["policy"] = Policy(env.observation_space.shape[0], env.action_space.shape[0], pretrained_policy=pretrained_policy, params=params, device=device)
     models["value"] = Value(env.observation_space.shape[0], env.action_space.shape[0], params=params, device=device)
-    models["low level policy"] = LowLevelPolicy(env.observation_space.shape[0]+env.action_space.shape[0], env.action_space.shape[0], params=params, device=device)
-    models["low level value"] = LowLevelValue(env.observation_space.shape[0]+env.action_space.shape[0], env.action_space.shape[0], params=params, device=device)
-    models["discriminator"] = Discriminator(env.amp_observation_size, env.action_space.shape[0], params=params, device=device)
     return models

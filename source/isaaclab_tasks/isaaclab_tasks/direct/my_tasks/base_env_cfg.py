@@ -41,7 +41,7 @@ class BaseEnvCfg(DirectRLEnvCfg):
     relative_pose_observation: int = 0
 
     # reward
-    reward: list = []
+    reward: list = ["ones"]
     
     # motions
     action_clip: list = MISSING

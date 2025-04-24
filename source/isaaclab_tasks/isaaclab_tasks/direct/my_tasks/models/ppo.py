@@ -2,7 +2,6 @@ from skrl.models.torch import DeterministicMixin, GaussianMixin, Model
 import torch
 from torch import nn
 
-# ==================== Policy Model (Gaussian Policy) ====================
 class Policy(GaussianMixin, Model):
     def __init__(self, observation_space, action_space, params, CLIP=None, device=None):
         Model.__init__(self, observation_space, action_space, device)
@@ -13,7 +12,6 @@ class Policy(GaussianMixin, Model):
                               max_log_std=2.0,
                               )
 
-        # Network layers (1024 -> 512)
         self.net = nn.Sequential(
             nn.Linear(observation_space, params),
             nn.ReLU(),
@@ -26,13 +24,11 @@ class Policy(GaussianMixin, Model):
     def compute(self, inputs, role):
         return self.net(inputs["states"]), self.log_std_parameter, {}
 
-# ==================== Value Model (Deterministic) ====================
 class Value(DeterministicMixin, Model):
     def __init__(self, observation_space, action_space, params, device=None):
         Model.__init__(self, observation_space, action_space, device)
         DeterministicMixin.__init__(self, clip_actions=False)
 
-        # Network layers (1024 -> 512 -> 1)
         self.net = nn.Sequential(
             nn.Linear(observation_space, params),
             nn.ReLU(),

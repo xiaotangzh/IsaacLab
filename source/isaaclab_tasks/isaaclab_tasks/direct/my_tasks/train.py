@@ -50,11 +50,11 @@ env = wrap_env(env)
 # agent configuration
 from agents.amp import AMP, AMP_DEFAULT_CONFIG
 from agents.ppo import PPO, PPO_DEFAULT_CONFIG
-from agents.hrl import HRL, HRL_DEFAULT_CONFIG
+from isaaclab_tasks.direct.my_tasks.agents._hrl import HRL, HRL_DEFAULT_CONFIG
 from models.amp import *
-from models.moe import *
-from models.ppo import *
 from models.hrl import *
+from models.ppo import *
+from isaaclab_tasks.direct.my_tasks.models._hrl import *
 agent, agent_cfg = None, None
 
 # IsaacLab AMP default configurations
@@ -189,6 +189,14 @@ elif "HRL" in args.task:
             "name": experiment_name,
         }
     }
+
+    # load pretrained policy
+    checkpoint = "./logs/AMP-Humanoid/walk env1024 lr5e-5 steps30w/checkpoints/best_agent.pt"
+    checkpoint = torch.load(checkpoint, map_location=device)
+    print(checkpoint.keys())
+    sys.exit(0)
+    pretrained_policy = get_AMP_policy_model()
+    pretrained_policy.load_state_dict()
     
     # instantiate the models
     models = instantiate_HRL(env, params=args.params, device=device)
@@ -214,7 +222,6 @@ if args.checkpoint:
     if resume_path:
         print(f"[INFO] Loading model checkpoint from: {resume_path}")
         agent.load(resume_path)
-        # agent.cfg = agent_cfg
 
 # start training
 trainer.train()
