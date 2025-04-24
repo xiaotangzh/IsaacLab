@@ -25,7 +25,7 @@ parser.add_argument("--name", type=str, default="", help="Name of the experiment
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint to resume training.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--wandb", action="store_true", default=False, help="Log training results to Weight and Bias.")
-parser.add_argument("--lr", type=float, default=5e-5, help="Learning rate.")
+parser.add_argument("--lr", type=float, default=None, help="Learning rate.")
 parser.add_argument("--params", type=int, default=1024, help="Number of parameters for learning.") 
 parser.add_argument("--disable_progressbar", action="store_true", default=False, help="Disable progress bar of tqdm.")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -49,9 +49,8 @@ env = wrap_env(env)
 
 # agent configuration
 from agents.amp import AMP, AMP_DEFAULT_CONFIG
-from agents.moe import MOE, MOE_DEFAULT_CONFIG
 from agents.ppo import PPO, PPO_DEFAULT_CONFIG
-from agents.hrl import HRL
+from agents.hrl import HRL, HRL_DEFAULT_CONFIG
 from models.amp import *
 from models.moe import *
 from models.ppo import *
@@ -147,7 +146,7 @@ elif "PPO" in args.task:
                 device=device)
     
 elif "HRL" in args.task:
-    agent_cfg = AMP_DEFAULT_CONFIG.copy()
+    agent_cfg = HRL_DEFAULT_CONFIG.copy()
     
     # IsaacLab AMP default configurations
     agent_cfg["state_preprocessor"] = RunningStandardScaler

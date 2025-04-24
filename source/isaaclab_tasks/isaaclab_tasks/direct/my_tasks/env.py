@@ -46,21 +46,21 @@ class Env(DirectRLEnv):
         # load motion
         if self.cfg.robot_format == "humanoid": MotionLoader = MotionLoaderHumanoid28
         else: MotionLoader = MotionLoaderSMPL
-        self._motion_loader_1 = MotionLoader(motion_file=self.cfg.motion_file_1, device=self.device)
-        self._motion_loader_2 = MotionLoader(motion_file=self.cfg.motion_file_2, device=self.device) if hasattr(self.cfg, "motion_file_2") else None 
+        self.motion_loader_1 = MotionLoader(motion_file=self.cfg.motion_file_1, device=self.device)
+        self.motion_loader_2 = MotionLoader(motion_file=self.cfg.motion_file_2, device=self.device) if hasattr(self.cfg, "motion_file_2") else None 
         self.sample_times = None # synchronize sampling times for two robots
-        if self.cfg.episode_length_s < 0 or self.cfg.episode_length_s > self._motion_loader_1.duration:
-            self.cfg.episode_length_s = self._motion_loader_1.duration
+        if self.cfg.episode_length_s < 0 or self.cfg.episode_length_s > self.motion_loader_1.duration:
+            self.cfg.episode_length_s = self.motion_loader_1.duration
 
         # DOF and key body indexes
         key_body_names = self.cfg.key_body_names
         self.ref_body_index = self.robot1.data.body_names.index(self.cfg.reference_body)
         self.early_termination_body_indexes = [self.robot1.data.body_names.index(name) for name in self.cfg.termination_bodies]
         self.key_body_indexes = [self.robot1.data.body_names.index(name) for name in key_body_names]
-        self.motion_dof_indexes = self._motion_loader_1.get_dof_index(self.robot1.data.joint_names)
-        self.motion_body_indexes = self._motion_loader_1.get_body_index(self.robot1.data.body_names)
-        self.motion_ref_body_index = self._motion_loader_1.get_body_index([self.cfg.reference_body])[0]
-        self.motion_key_body_indexes = self._motion_loader_1.get_body_index(key_body_names)
+        self.motion_dof_indexes = self.motion_loader_1.get_dof_index(self.robot1.data.joint_names)
+        self.motion_body_indexes = self.motion_loader_1.get_body_index(self.robot1.data.body_names)
+        self.motion_ref_body_index = self.motion_loader_1.get_body_index([self.cfg.reference_body])[0]
+        self.motion_key_body_indexes = self.motion_loader_1.get_body_index(key_body_names)
 
         # reconfigure AMP observation space according to the number of observations and create the buffer
         self.amp_observation_size = self.cfg.num_amp_observations * self.cfg.amp_observation_space
@@ -72,7 +72,7 @@ class Env(DirectRLEnv):
         # do not lift root height when syncing motions
         if self.cfg.sync_motion:
             self.cfg.init_root_height = 0.0
-            self.cfg.episode_length_s = self._motion_loader_1.duration
+            self.cfg.episode_length_s = self.motion_loader_1.duration
 
         # markers
         self.green_markers = VisualizationMarkers(self.cfg.marker_green_cfg)
@@ -85,8 +85,8 @@ class Env(DirectRLEnv):
             self.ref_state_buffer_length, self.ref_state_buffer_index = self.max_episode_length, 0
             self.ref_state_buffer_1 = {}
             self.ref_state_buffer_2 = {}
-            self.reset_reference_buffer(self._motion_loader_1, self.ref_state_buffer_1)
-            if hasattr(self.cfg, "robot2"): self.reset_reference_buffer(self._motion_loader_2, self.ref_state_buffer_2)
+            self.reset_reference_buffer(self.motion_loader_1, self.ref_state_buffer_1)
+            if hasattr(self.cfg, "robot2"): self.reset_reference_buffer(self.motion_loader_2, self.ref_state_buffer_2)
             
 
         # other properties
@@ -102,9 +102,9 @@ class Env(DirectRLEnv):
 
         # for relative positions
         if self.cfg.require_relative_pose:
-            assert self._motion_loader_2 is not None
-            self._motion_loader_1.relative_pose = self.precompute_relative_body_positions(source=self._motion_loader_2, target=self._motion_loader_1)
-            self._motion_loader_2.relative_pose = self.precompute_relative_body_positions(source=self._motion_loader_1, target=self._motion_loader_2)
+            assert self.motion_loader_2 is not None
+            self.motion_loader_1.relative_pose = self.precompute_relative_body_positions(source=self.motion_loader_2, target=self.motion_loader_1)
+            self.motion_loader_2.relative_pose = self.precompute_relative_body_positions(source=self.motion_loader_1, target=self.motion_loader_2)
             
     def _setup_scene(self):
         # add robots
@@ -222,14 +222,14 @@ class Env(DirectRLEnv):
             if self.robot2: root_state_2, joint_pos_2, joint_vel_2 = self.reset_strategy_default(env_ids, self.robot2)
         elif self.cfg.reset_strategy.startswith("random"):
             start = "start" in self.cfg.reset_strategy
-            root_state_1, joint_pos_1, joint_vel_1 = self.reset_strategy_random(env_ids, self._motion_loader_1, start)
-            if self.robot2: root_state_2, joint_pos_2, joint_vel_2 = self.reset_strategy_random(env_ids, self._motion_loader_2, start)
+            root_state_1, joint_pos_1, joint_vel_1 = self.reset_strategy_random(env_ids, self.motion_loader_1, start)
+            if self.robot2: root_state_2, joint_pos_2, joint_vel_2 = self.reset_strategy_random(env_ids, self.motion_loader_2, start)
 
             # update AMP observation buffer after resetting environments
             num_samples = env_ids.shape[0]
-            amp_observations = self.collect_reference_motions(num_samples, self.sample_times, self._motion_loader_1)
+            amp_observations = self.collect_reference_motions(num_samples, self.sample_times, self.motion_loader_1)
             if self.robot2: 
-                amp_observations_2 = self.collect_reference_motions(num_samples, self.sample_times, self._motion_loader_2)
+                amp_observations_2 = self.collect_reference_motions(num_samples, self.sample_times, self.motion_loader_2)
                 amp_observations = torch.cat([amp_observations, amp_observations_2], dim=-1)
             self.amp_observation_buffer[env_ids] = amp_observations.view(num_samples, self.cfg.num_amp_observations, -1)
         else:
@@ -260,7 +260,7 @@ class Env(DirectRLEnv):
             self.robot1.data.body_quat_w[:, self.ref_body_index],
             self.robot1.data.body_lin_vel_w[:, self.ref_body_index],
             self.robot1.data.body_ang_vel_w[:, self.ref_body_index],
-            self._motion_loader_1.get_relative_pose(frame=self.episode_length_buf) if self.cfg.require_relative_pose else None
+            self.motion_loader_1.get_relative_pose(frame=self.episode_length_buf) if self.cfg.require_relative_pose else None
         )
         if self.robot2:
             obs_2 = self.compute_obs(
@@ -270,7 +270,7 @@ class Env(DirectRLEnv):
                 self.robot2.data.body_quat_w[:, self.ref_body_index],
                 self.robot2.data.body_lin_vel_w[:, self.ref_body_index],
                 self.robot2.data.body_ang_vel_w[:, self.ref_body_index],
-                self._motion_loader_2.get_relative_pose(frame=self.episode_length_buf) if self.cfg.require_relative_pose else None
+                self.motion_loader_2.get_relative_pose(frame=self.episode_length_buf) if self.cfg.require_relative_pose else None
             )
 
         # detect NaN in observations
@@ -296,7 +296,7 @@ class Env(DirectRLEnv):
                     self.robot1.data.body_quat_w[nan_env_ids, self.ref_body_index],
                     self.robot1.data.body_lin_vel_w[nan_env_ids, self.ref_body_index],
                     self.robot1.data.body_ang_vel_w[nan_env_ids, self.ref_body_index],
-                    self._motion_loader_1.get_relative_pose(frame=self.episode_length_buf[nan_env_ids]) if self.cfg.require_relative_pose else None
+                    self.motion_loader_1.get_relative_pose(frame=self.episode_length_buf[nan_env_ids]) if self.cfg.require_relative_pose else None
                 )
                 if self.robot2: 
                     obs_2[nan_env_ids] = self.compute_obs(
@@ -306,7 +306,7 @@ class Env(DirectRLEnv):
                         self.robot2.data.body_quat_w[nan_env_ids, self.ref_body_index],
                         self.robot2.data.body_lin_vel_w[nan_env_ids, self.ref_body_index],
                         self.robot2.data.body_ang_vel_w[nan_env_ids, self.ref_body_index],
-                        self._motion_loader_2.get_relative_pose(frame=self.episode_length_buf[nan_env_ids]) if self.cfg.require_relative_pose else None
+                        self.motion_loader_2.get_relative_pose(frame=self.episode_length_buf[nan_env_ids]) if self.cfg.require_relative_pose else None
                     )
         
         # input states with pose of another character
@@ -367,8 +367,8 @@ class Env(DirectRLEnv):
         num_samples = env_ids.shape[0]
 
         # sample random motion times (or zeros if start is True)
-        if motion_loader == self._motion_loader_1: # only sample once for both robots
-            self.sample_times = np.zeros(num_samples) if start else motion_loader.sample_times(num_samples, high=0.95) # specify upper bound to avoid out of boundary in imitation learning
+        if motion_loader == self.motion_loader_1: # only sample once for both robots
+            self.sample_times = np.zeros(num_samples) if start else motion_loader.sample_times(num_samples)
         
         # for imitation reward, use self.episode_length_buf as frame index in dataset
         if "imitation" in self.cfg.reward:
@@ -401,10 +401,10 @@ class Env(DirectRLEnv):
     def collect_reference_motions(self, num_samples: int, current_times: np.ndarray | None = None, motion_loader=None) -> torch.Tensor:
         # sample random motion times (or use the one specified)
         if current_times is None:
-            current_times = self._motion_loader_1.sample_times(num_samples)
+            current_times = self.motion_loader_1.sample_times(num_samples)
         times = (
             np.expand_dims(current_times, axis=-1)
-            - self._motion_loader_1.dt * np.arange(0, self.cfg.num_amp_observations)
+            - self.motion_loader_1.dt * np.arange(0, self.cfg.num_amp_observations)
         ).flatten()
 
         if motion_loader: # updating AMP observation buffer
@@ -432,7 +432,7 @@ class Env(DirectRLEnv):
             return amp_observation # (num_envs, state transitions)
 
         else: # updating AMP motion dataset (ground truth) for agent
-            motion_loader = self._motion_loader_1
+            motion_loader = self.motion_loader_1
             # get motions
             (
                 dof_positions,
@@ -455,7 +455,7 @@ class Env(DirectRLEnv):
             ).view(-1, int(self.amp_observation_size/2) if self.robot2 else self.amp_observation_size)
             
             if self.robot2:
-                motion_loader = self._motion_loader_2
+                motion_loader = self.motion_loader_2
                 # get motions
                 (
                     dof_positions,

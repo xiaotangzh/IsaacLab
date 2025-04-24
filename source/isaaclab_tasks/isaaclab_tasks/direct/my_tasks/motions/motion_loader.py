@@ -197,7 +197,7 @@ class MotionLoader:
         index_1 = np.minimum(index_0 + 1, self.num_frames - 1)
         return index_0, index_1
 
-    def sample_times(self, num_samples: int, duration: float | None = None, high: float | None = None) -> np.ndarray:
+    def sample_times(self, num_samples: int, duration: float | None = None, upper_bound: float = 0.95) -> np.ndarray:
         """Sample random motion times uniformly.
 
         Args:
@@ -212,10 +212,10 @@ class MotionLoader:
             Time samples, between 0 and the specified/motion duration.
         """
         duration = self.duration if duration is None else duration
-        assert (
-            duration <= self.duration
-        ), f"The specified duration ({duration}) is longer than the motion duration ({self.duration})"
-        return duration * np.random.uniform(low=0.0, high=1.0 if high is None else high, size=num_samples)
+        assert (duration <= self.duration), f"The specified duration ({duration}) is longer than the motion duration ({self.duration})."
+        assert (self.duration > 2), f"Motion file duration is too short (less than 2 seconds)."
+        duration = (duration - 2) if (self.duration - duration * upper_bound) < 2 else duration
+        return duration * np.random.uniform(low=0.0, high=1.0, size=num_samples)
 
     def get_relative_pose(self, times: np.ndarray | None=None, frame: torch.Tensor | None=None) -> torch.Tensor: # frame=(num_envs,)
         assert self.relative_pose is not None
