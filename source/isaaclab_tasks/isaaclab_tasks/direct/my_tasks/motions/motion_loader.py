@@ -213,8 +213,8 @@ class MotionLoader:
         """
         duration = self.duration if duration is None else duration
         assert (duration <= self.duration), f"The specified duration ({duration}) is longer than the motion duration ({self.duration})."
-        assert (self.duration > 2), f"Motion file duration is too short (less than 2 seconds)."
-        duration = (duration - 2) if (self.duration - duration * upper_bound) < 2 else duration
+        assert (self.duration > 1), f"Motion file duration is too short (less than 1 seconds)."
+        duration = (duration - 1) if (self.duration - duration * upper_bound) < 1 else duration
         return duration * np.random.uniform(low=0.0, high=1.0, size=num_samples)
 
     def get_relative_pose(self, times: np.ndarray | None=None, frame: torch.Tensor | None=None) -> torch.Tensor: # frame=(num_envs,)
