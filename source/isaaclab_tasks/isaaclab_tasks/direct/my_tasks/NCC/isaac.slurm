@@ -4,19 +4,21 @@
 #SBATCH --qos=long-high-prio 
 #SBATCH --time=6-23:59:59
 #SBATCH -p res-gpu-small
-#SBATCH --mem=28g #max
+#SBATCH --mem=10g #max
 
-#* gpu memory=10gb
-# --gres=gpu:pascal:1
+
+### 2 x Titan X, 14 x Titan XP
+# --gres=gpu:pascal:1          
+
+### 126 x Virtual 10GB GPU (each equivalent to 1/7 compute performance of an 80GB A100)
 # --gres=gpu:1g.10gb:1
-# --gres=gpu:turing:1
 
-#* gpu78
-#SBATCH --gres=gpu:turing:1
-#SBATCH --nodelist=gpu[7]
+### 24 x 2080 Ti, 8 x Titan RTX, 1 x Quadro RTX 8000
+#SBATCH --gres=gpu:turing:1 
 
-#* A100
-# --gres=gpu:ampere:1
+### 3 x RTX A6000, 12 x 80GB A100 (PCIe)
+# --gres=gpu:ampere:1       
+
 
 # Isaac Sim root directory
 export ISAACSIM_PATH="/home2/sgtn88/IsaacSim"
@@ -31,10 +33,10 @@ cd "/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/my_tasks"
 # python train.py --task AMP-InterHuman-2Robots --num_envs 4096 --name "motion 1 env4096 steps 8w require another pose" --steps 80000 --params 1024 --wandb --headless --disable_progressbar
 
 # AMP humanoid
-python train.py --task AMP-Humanoid --num_envs 4096 --name "walk env4096 steps 20w" --steps 200000 --params 1024 --wandb --headless --disable_progressbar
+python train.py --task AMP-Humanoid --num_envs 1024 --name "run env1024 steps 30w" --steps 300000 --params 1024 --wandb --headless --disable_progressbar
 
 # PPO interhuman
-# python train.py --task PPO-InterHuman-2Robots --num_envs 4096 --name "motion 26 env4096 steps 20w L2 all bodies pos" --steps 200000 --wandb --headless --disable_progressbar
+# python train.py --task PPO-InterHuman-2Robots --num_envs 512 --name "motion 1 env512 steps 20w imitation" --steps 200000 --wandb --headless --disable_progressbar
 
 # PPO stability
 # python train.py --task PPO --num_envs 4096 --name "com acc env4096 steps 300000 version 2" --steps 300000 --params 1024 --wandb --headless --disable_progressbar --checkpoint "logs/PPO/com acc env4096 steps 300000/checkpoints/best_agent.pt"
