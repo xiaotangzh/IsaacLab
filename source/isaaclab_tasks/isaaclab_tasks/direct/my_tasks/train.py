@@ -25,7 +25,7 @@ parser.add_argument("--name", type=str, default="", help="Name of the experiment
 parser.add_argument("--checkpoint", type=str, default=None, help="Path to model checkpoint to resume training.")
 parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
 parser.add_argument("--wandb", action="store_true", default=False, help="Log training results to Weight and Bias.")
-parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate.")
+parser.add_argument("--lr", type=float, default=5e-5, help="Learning rate.")
 parser.add_argument("--params", type=int, default=1024, help="Number of parameters for learning.") 
 parser.add_argument("--disable_progressbar", action="store_true", default=False, help="Disable progress bar of tqdm.")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -61,16 +61,9 @@ agent, agent_cfg = None, None
 # IsaacLab AMP default configurations
 if "AMP" in args.task:
     agent_cfg = AMP_DEFAULT_CONFIG.copy()
-    
-    # IsaacLab AMP default configurations
-    agent_cfg["state_preprocessor"] = RunningStandardScaler
     agent_cfg["state_preprocessor_kwargs"] = {"size": env.observation_space}
-    agent_cfg["value_preprocessor"] = RunningStandardScaler 
     agent_cfg["value_preprocessor_kwargs"] = {"size": 1}
-    agent_cfg["amp_state_preprocessor"] = RunningStandardScaler
     agent_cfg["amp_state_preprocessor_kwargs"] = {"size": env.amp_observation_size}
-    agent_cfg["discriminator_batch_size"] = 4096
-    agent_cfg["clip_predicted_values"] = True
     
     # memory configuration
     rollout_memory = RandomMemory(

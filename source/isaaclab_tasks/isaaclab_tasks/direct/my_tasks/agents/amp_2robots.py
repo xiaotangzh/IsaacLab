@@ -31,11 +31,11 @@ AMP_DEFAULT_CONFIG = {
     "learning_rate_scheduler": None,        # learning rate scheduler class (see torch.optim.lr_scheduler)
     "learning_rate_scheduler_kwargs": {},   # learning rate scheduler's kwargs (e.g. {"step_size": 1e-3})
 
-    "state_preprocessor": None,             # state preprocessor class (see skrl.resources.preprocessors)
+    "state_preprocessor": RunningStandardScaler,             # state preprocessor class (see skrl.resources.preprocessors)
     "state_preprocessor_kwargs": {},        # state preprocessor's kwargs (e.g. {"size": env.observation_space})
-    "value_preprocessor": None,             # value preprocessor class (see skrl.resources.preprocessors)
+    "value_preprocessor": RunningStandardScaler,             # value preprocessor class (see skrl.resources.preprocessors)
     "value_preprocessor_kwargs": {},        # value preprocessor's kwargs (e.g. {"size": 1})
-    "amp_state_preprocessor": None,         # AMP state preprocessor class (see skrl.resources.preprocessors)
+    "amp_state_preprocessor": RunningStandardScaler,         # AMP state preprocessor class (see skrl.resources.preprocessors)
     "amp_state_preprocessor_kwargs": {},    # AMP state preprocessor's kwargs (e.g. {"size": env.amp_observation_space})
 
     "random_timesteps": 0,          # random exploration steps
@@ -44,7 +44,7 @@ AMP_DEFAULT_CONFIG = {
     "grad_norm_clip": 0.0,              # clipping coefficient for the norm of the gradients
     "ratio_clip": 0.2,                  # clipping coefficient for computing the clipped surrogate objective
     "value_clip": 0.2,                  # clipping coefficient for computing the value loss (if clip_predicted_values is True)
-    "clip_predicted_values": False,     # clip predicted values during value loss computation
+    "clip_predicted_values": True,     # clip predicted values during value loss computation
 
     "entropy_loss_scale": 0.0,          # entropy loss scaling factor
     "value_loss_scale": 2.5,            # value loss scaling factor
@@ -53,7 +53,7 @@ AMP_DEFAULT_CONFIG = {
     "amp_batch_size": 512,                  # batch size for updating the reference motion dataset
     "task_reward_weight": 0.0,              # task-reward weight (wG)
     "style_reward_weight": 1.0,             # style-reward weight (wS)
-    "discriminator_batch_size": 0,          # batch size for computing the discriminator loss (all samples if 0)
+    "discriminator_batch_size": 4096,          # batch size for computing the discriminator loss (all samples if 0)
     "discriminator_reward_scale": 2,                    # discriminator reward scaling factor
     "discriminator_logit_regularization_scale": 0.05,   # logit regularization scale factor for the discriminator loss
     "discriminator_gradient_penalty_scale": 5,          # gradient penalty scaling factor for the discriminator loss

@@ -11,8 +11,6 @@ class Policy(GaussianMixin, Model):
                               clip_log_std=True,
                               min_log_std=-20.0,
                               max_log_std=2.0,
-                            #   initial_log_std=-2.9,
-                            #   fixed_log_std=True
                               )
 
         # Network layers (1024 -> 512)
@@ -21,9 +19,9 @@ class Policy(GaussianMixin, Model):
             nn.ReLU(),
             nn.Linear(params, int(params/2)),
             nn.ReLU(),
-            nn.Linear(int(params/2), action_space)  # Output actions
+            nn.Linear(int(params/2), action_space) 
         )
-        self.log_std_parameter = nn.Parameter(torch.zeros(action_space)) #todo different from default yaml
+        self.log_std_parameter = nn.Parameter(torch.zeros(action_space)) 
 
     def compute(self, inputs, role):
         return self.net(inputs["states"]), self.log_std_parameter, {}
@@ -40,12 +38,12 @@ class Value(DeterministicMixin, Model):
             nn.ReLU(),
             nn.Linear(params, int(params/2)),
             nn.ReLU(),
-            nn.Linear(int(params/2), 1)  # Output single value
+            nn.Linear(int(params/2), 1) 
         )
 
     def compute(self, inputs, role):
         states = inputs["states"]
-        return self.net(states), {}  # (value, None)
+        return self.net(states), {} 
     
 def instantiate_PPO(env, params: int=1, device: torch.device | None=None):
     models = {}

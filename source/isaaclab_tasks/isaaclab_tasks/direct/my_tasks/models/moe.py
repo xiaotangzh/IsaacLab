@@ -11,8 +11,6 @@ class Policy(GaussianMixin, Model):
                               clip_log_std=True,
                               min_log_std=-20.0,
                               max_log_std=2.0,
-                            #   initial_log_std=-2.9,
-                            #   fixed_log_std=True
                               )
 
         # Network layers (1024 -> 512)
@@ -21,9 +19,9 @@ class Policy(GaussianMixin, Model):
             nn.ReLU(),
             nn.Linear(1024, 512),
             nn.ReLU(),
-            nn.Linear(512, gating_size)  # Output actions
+            nn.Linear(512, gating_size) 
         )
-        self.log_std_parameter = nn.Parameter(torch.zeros(gating_size)) #todo different from default yaml
+        self.log_std_parameter = nn.Parameter(torch.zeros(gating_size)) 
 
     def compute(self, inputs, role):
         return self.net(torch.cat([inputs["states"], inputs["goal"]], dim=-1)), self.log_std_parameter, {}
@@ -40,11 +38,11 @@ class Value(DeterministicMixin, Model):
             nn.ReLU(),
             nn.Linear(1024, 512),
             nn.ReLU(),
-            nn.Linear(512, 1)  # Output single value
+            nn.Linear(512, 1)
         )
 
     def compute(self, inputs, role):
-        return self.net(torch.cat([inputs["states"], inputs["goal"]], dim=-1)), {}  # (value, None)
+        return self.net(torch.cat([inputs["states"], inputs["goal"]], dim=-1)), {}  
 
 # ==================== Discriminator Model (Deterministic) ====================
 class Expert(DeterministicMixin, Model):
@@ -58,11 +56,11 @@ class Expert(DeterministicMixin, Model):
             nn.ReLU(),
             nn.Linear(1024, 512),
             nn.ReLU(),
-            nn.Linear(512, sub_action_size)  # Output single discriminator score
+            nn.Linear(512, sub_action_size) 
         )
 
     def compute(self, inputs, role):
-        return self.net(inputs["gating"]), {}  # (discriminator_output, None)
+        return self.net(inputs["gating"]), {}  
     
 def instantiate_MOE(env, params, cfg, device):
     models = {}

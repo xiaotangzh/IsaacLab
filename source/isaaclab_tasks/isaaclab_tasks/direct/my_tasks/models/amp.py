@@ -2,6 +2,22 @@ from skrl.models.torch import DeterministicMixin, GaussianMixin, Model
 import torch
 from torch import nn
 
+# SKRL model instantiator
+# def __init__(self, observation_space, action_space, device, clip_actions=False,
+#                     clip_log_std=True, min_log_std=-20, max_log_std=2, reduction="sum", **kwargs):
+#         Model.__init__(self, observation_space, action_space, device, **kwargs)
+#         GaussianMixin.__init__(self, clip_actions, clip_log_std, min_log_std, max_log_std, reduction)
+
+#     def setup(self):
+#         {networks}
+#         self.log_std_parameter = {log_std_parameter}
+
+#     def __call__(self, inputs, role):
+#         states = unflatten_tensorized_space(self.observation_space, inputs.get("states"))
+#         taken_actions = unflatten_tensorized_space(self.action_space, inputs.get("taken_actions"))
+#         {forward}
+#         return output, self.log_std_parameter, {{}}
+
 # ==================== Policy Model (Gaussian Policy) ====================
 class Policy(GaussianMixin, Model):
     def __init__(self, observation_space, action_space, params, CLIP=None, device=None):
@@ -11,8 +27,6 @@ class Policy(GaussianMixin, Model):
                               clip_log_std=True,
                               min_log_std=-20.0,
                               max_log_std=2.0,
-                            #   initial_log_std=-2.9,
-                            #   fixed_log_std=True
                               )
 
         # Network layers (1024 -> 512)
@@ -21,9 +35,9 @@ class Policy(GaussianMixin, Model):
             nn.ReLU(),
             nn.Linear(params, int(params/2)),
             nn.ReLU(),
-            nn.Linear(int(params/2), action_space)  # Output actions
+            nn.Linear(int(params/2), action_space)
         )
-        self.log_std_parameter = nn.Parameter(torch.zeros(action_space)) #todo different from default yaml
+        self.log_std_parameter = nn.Parameter(torch.zeros(action_space)) 
 
     def compute(self, inputs, role):
         return self.net(inputs["states"]), self.log_std_parameter, {}
@@ -40,12 +54,12 @@ class Value(DeterministicMixin, Model):
             nn.ReLU(),
             nn.Linear(params, int(params/2)),
             nn.ReLU(),
-            nn.Linear(int(params/2), 1)  # Output single value
+            nn.Linear(int(params/2), 1) 
         )
 
     def compute(self, inputs, role):
         states = inputs["states"]
-        return self.net(states), {}  # (value, None)
+        return self.net(states), {}  
 
 # ==================== Discriminator Model (Deterministic) ====================
 class Discriminator(DeterministicMixin, Model):
@@ -59,12 +73,12 @@ class Discriminator(DeterministicMixin, Model):
             nn.ReLU(),
             nn.Linear(params, int(params/2)),
             nn.ReLU(),
-            nn.Linear(int(params/2), 1)  # Output single discriminator score
+            nn.Linear(int(params/2), 1)  
         )
 
     def compute(self, inputs, role):
         states = inputs["states"]
-        return self.net(states), {}  # (discriminator_output, None)
+        return self.net(states), {}  
     
 def instantiate_AMP(env, params: int=1, device: torch.device | None=None):
     models = {}
