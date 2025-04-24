@@ -309,7 +309,7 @@ class Env(DirectRLEnv):
                         self._motion_loader_2.get_relative_pose(frame=self.episode_length_buf[nan_env_ids]) if self.cfg.require_relative_pose else None
                     )
         
-        # if input states with pose of another character
+        # input states with pose of another character
         if self.cfg.require_another_pose:
             obs_1, obs_2 = torch.cat([obs_1, obs_2], dim=-1), torch.cat([obs_2, obs_1], dim=-1)
 

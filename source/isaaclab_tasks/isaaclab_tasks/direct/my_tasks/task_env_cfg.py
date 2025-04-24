@@ -53,13 +53,16 @@ class PPO_InterHuman(EnvCfg1RobotSMPL):
 
 @configclass
 class PPO_InterHuman_2Robots(EnvCfg2RobotsSMPL):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
-    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/26_2.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
+    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/1_2.npz")
 
     sync_motion = False
-    scene = InteractiveSceneCfg(env_spacing=3.0, replicate_physics=True)
+    require_another_pose = True
+    observation_space = 2 * 151 * 2
+    amp_observation_space =  2 * 151
+    scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
     reward = ["imitation"]
-    reset_strategy = "random"
+    reset_strategy = "random_start"
 
 @configclass
 class PPO_Humanoid(EnvCfg1RobotHumanoid28):
