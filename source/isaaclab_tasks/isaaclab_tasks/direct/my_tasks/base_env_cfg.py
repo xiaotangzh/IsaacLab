@@ -25,6 +25,7 @@ import isaaclab.sim as sim_utils
 from .terrain.terrain_generator_cfg import ROUGH_TERRAINS_CFG
 from isaaclab.terrains import TerrainImporterCfg
 from isaaclab.utils.assets import ISAACLAB_NUCLEUS_DIR
+from isaaclab.sim.spawners.materials import PreviewSurfaceCfg
 
 # motion directory
 MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions")
@@ -41,7 +42,7 @@ class BaseEnvCfg(DirectRLEnvCfg):
     relative_pose_observation: int = 0
 
     # reward
-    reward: list = ["ones"]
+    reward: list = ["zero"]
     
     # motions
     action_clip: list = MISSING
@@ -86,11 +87,12 @@ class BaseEnvCfg(DirectRLEnvCfg):
             static_friction=1.0,
             dynamic_friction=1.0,
         ),
-        visual_material=sim_utils.MdlFileCfg(
-            mdl_path=f"{ISAACLAB_NUCLEUS_DIR}/Materials/TilesMarbleSpiderWhiteBrickBondHoned/TilesMarbleSpiderWhiteBrickBondHoned.mdl",
-            project_uvw=True,
-            texture_scale=(0.25, 0.25),
-        ),
+        # visual_material=sim_utils.MdlFileCfg(
+        #     mdl_path=f"{ISAACLAB_NUCLEUS_DIR}/Materials/TilesMarbleSpiderWhiteBrickBondHoned/TilesMarbleSpiderWhiteBrickBondHoned.mdl",
+        #     project_uvw=True,
+        #     texture_scale=(0.25, 0.25),
+        # ),
+        visual_material=PreviewSurfaceCfg(diffuse_color=(0.0, 0.0, 0.0)),
         debug_vis=False,
     )
 
