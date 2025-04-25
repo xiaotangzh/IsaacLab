@@ -14,7 +14,8 @@ from .base_agent import BaseAgent
 from skrl.memories.torch import Memory
 from skrl.models.torch import Model
 from skrl.resources.schedulers.torch import KLAdaptiveLR
-
+from skrl.resources.preprocessors.torch import RunningStandardScaler
+from torch.distributions import Normal
 
 # fmt: off
 # [start-config-dict-torch]
@@ -30,9 +31,9 @@ HRL_DEFAULT_CONFIG = {
     "learning_rate_scheduler": None,        # learning rate scheduler class (see torch.optim.lr_scheduler)
     "learning_rate_scheduler_kwargs": {},   # learning rate scheduler's kwargs (e.g. {"step_size": 1e-3})
 
-    "state_preprocessor": None,             # state preprocessor class (see skrl.resources.preprocessors)
+    "state_preprocessor": RunningStandardScaler,             # state preprocessor class (see skrl.resources.preprocessors)
     "state_preprocessor_kwargs": {},        # state preprocessor's kwargs (e.g. {"size": env.observation_space})
-    "value_preprocessor": None,             # value preprocessor class (see skrl.resources.preprocessors)
+    "value_preprocessor": RunningStandardScaler,             # value preprocessor class (see skrl.resources.preprocessors)
     "value_preprocessor_kwargs": {},        # value preprocessor's kwargs (e.g. {"size": 1})
 
     "random_timesteps": 0,          # random exploration steps
@@ -101,7 +102,7 @@ class HRL(BaseAgent):
 
         :raises KeyError: If the models dictionary is missing a required key
         """
-        _cfg = copy.deepcopy(PPO_DEFAULT_CONFIG)
+        _cfg = copy.deepcopy(HRL_DEFAULT_CONFIG)
         _cfg.update(cfg if cfg is not None else {})
         super().__init__(
             models=models,
@@ -115,6 +116,7 @@ class HRL(BaseAgent):
         # models
         self.policy = self.models.get("policy", None)
         self.value = self.models.get("value", None)
+        self.pretrained_policy = self.models.get("pretrained_policy", None)
 
         # checkpoint models
         self.checkpoint_modules["policy"] = self.policy
@@ -185,7 +187,7 @@ class HRL(BaseAgent):
 
         # set up preprocessors
         if self._state_preprocessor:
-            self._state_preprocessor = self._state_preprocessor(**self.cfg["state_preprocessor_kwargs"])
+            # self._state_preprocessor = self._state_preprocessor(**self.cfg["state_preprocessor_kwargs"])
             self.checkpoint_modules["state_preprocessor"] = self._state_preprocessor
         else:
             self._state_preprocessor = self._empty_preprocessor
@@ -219,6 +221,17 @@ class HRL(BaseAgent):
         # create temporary variables needed for storage and computation
         self._current_log_prob = None
         self._current_next_states = None
+    
+    def pretrained_policy_act(self, inputs, role, sampling: str = "deterministic"):
+        with torch.no_grad():
+            self.pretrained_policy.eval()
+            
+            if sampling == "deterministic":
+                actions, log_std, outputs = self.pretrained_policy.compute(inputs, role)
+            else:
+                actions, log_std, outputs = self.pretrained_policy.act(inputs, role)
+
+        return actions
 
     def act(self, states: torch.Tensor, timestep: int, timesteps: int) -> torch.Tensor:
         """Process the environment's states to make a decision (actions) using the main policy
@@ -240,7 +253,9 @@ class HRL(BaseAgent):
 
         # sample stochastic actions
         with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-            actions, log_prob, outputs = self.policy.act({"states": self._state_preprocessor(states)}, role="policy")
+            actions = self.pretrained_policy_act({"states": self._state_preprocessor(states)}, role="pretrained_policy")
+            residual_actions, log_prob, outputs = self.policy.act({"states": actions}, role="policy") 
+            actions = actions + residual_actions
             self._current_log_prob = log_prob
 
         return actions, log_prob, outputs
@@ -452,8 +467,11 @@ class HRL(BaseAgent):
 
                     sampled_states = self._state_preprocessor(sampled_states, train=not epoch)
 
+                    actions = self.pretrained_policy_act({"states": self._state_preprocessor(sampled_states)}, 
+                    role="pretrained_policy")
+                    residual_actions = sampled_actions - actions
                     _, next_log_prob, _ = self.policy.act(
-                        {"states": sampled_states, "taken_actions": sampled_actions}, role="policy"
+                        {"states": actions, "taken_actions": residual_actions}, role="policy"
                     )
 
                     # compute approximate KL divergence

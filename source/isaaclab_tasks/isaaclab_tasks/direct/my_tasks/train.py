@@ -50,11 +50,10 @@ env = wrap_env(env)
 # agent configuration
 from agents.amp import AMP, AMP_DEFAULT_CONFIG
 from agents.ppo import PPO, PPO_DEFAULT_CONFIG
-from isaaclab_tasks.direct.my_tasks.agents._hrl import HRL, HRL_DEFAULT_CONFIG
+from agents.hrl import HRL, HRL_DEFAULT_CONFIG
 from models.amp import *
 from models.hrl import *
 from models.ppo import *
-from isaaclab_tasks.direct.my_tasks.models._hrl import *
 agent, agent_cfg = None, None
 
 # IsaacLab AMP default configurations
@@ -63,6 +62,7 @@ if "AMP" in args.task:
     agent_cfg["state_preprocessor_kwargs"] = {"size": env.observation_space}
     agent_cfg["value_preprocessor_kwargs"] = {"size": 1}
     agent_cfg["amp_state_preprocessor_kwargs"] = {"size": env.amp_observation_size}
+    agent_cfg["task_reward_weight"] = 0.0
     
     # memory configuration
     rollout_memory = RandomMemory(
@@ -149,15 +149,9 @@ elif "HRL" in args.task:
     agent_cfg = HRL_DEFAULT_CONFIG.copy()
     
     # IsaacLab AMP default configurations
-    agent_cfg["state_preprocessor"] = RunningStandardScaler
     agent_cfg["state_preprocessor_kwargs"] = {"size": env.observation_space}
-    agent_cfg["value_preprocessor"] = RunningStandardScaler 
     agent_cfg["value_preprocessor_kwargs"] = {"size": 1}
-    agent_cfg["amp_state_preprocessor"] = RunningStandardScaler
-    agent_cfg["amp_state_preprocessor_kwargs"] = {"size": env.amp_observation_size}
-    agent_cfg["discriminator_batch_size"] = 4096
     agent_cfg["clip_predicted_values"] = True
-    agent_cfg["task_reward_weight"] = 1.0 # use environment rewards
     
     # memory configuration
     rollout_memory = RandomMemory(
@@ -191,24 +185,24 @@ elif "HRL" in args.task:
     }
 
     # load pretrained policy
-    checkpoint = "./logs/AMP-Humanoid/walk env1024 lr5e-5 steps30w/checkpoints/best_agent.pt"
-    checkpoint = torch.load(checkpoint, map_location=device)
-    print(checkpoint.keys())
-    sys.exit(0)
-    pretrained_policy = get_AMP_policy_model()
-    pretrained_policy.load_state_dict()
+    checkpoint = "./logs/AMP-Humanoid/PRETRAINED/walk env1024 lr5e-5 steps30w/checkpoints/best_agent.pt"
+    checkpoint = torch.load(checkpoint, map_location=device, weights_only=True)
+    pretrained_policy = instantiate_AMP_Policy(env, params=args.params, device=device)
+    pretrained_policy.load_state_dict(checkpoint["policy"])
+    # load pretrained state preprocessor
+    state_preprocessor = RunningStandardScaler(**agent_cfg["state_preprocessor_kwargs"])
+    state_preprocessor.load_state_dict(checkpoint["state_preprocessor"])
+    agent_cfg["state_preprocessor"] = state_preprocessor
     
     # instantiate the models
     models = instantiate_HRL(env, params=args.params, device=device)
+    models["pretrained_policy"] = pretrained_policy
+
     agent = HRL(models=models,
                 memory=rollout_memory,  
                 cfg=agent_cfg,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
-                amp_observation_space=env.amp_observation_size,
-                motion_dataset=motion_dataset,
-                reply_buffer=reply_buffer,
-                collect_reference_motions=env.collect_reference_motions,
                 device=device)
 
 # configure and instantiate the RL trainer

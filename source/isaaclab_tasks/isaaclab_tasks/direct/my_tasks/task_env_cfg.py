@@ -94,12 +94,11 @@ class HRL_InterHuman(EnvCfg1RobotSMPL):
 class HRL_Humanoid(EnvCfg1RobotHumanoid28):
     motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_walk.npz")
 
-    reward = ["com_acc", "imitation"]
+    reward = ["stand_forward"]
     reset_strategy = "random_start"
 
-    # terrain = "uneven"
+    terrain = "uneven"
     # init_root_height = 0.15
 
     # sync_motion = True
-
-    scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
+    scene = InteractiveSceneCfg(env_spacing=2.5, replicate_physics=True)

@@ -185,8 +185,8 @@ class Env(DirectRLEnv):
     def _get_rewards(self) -> torch.Tensor:
         rewards = torch.zeros([self.num_envs], device=self.device)
 
-        if "ones" in self.cfg.reward:
-            rewards += self.reward_ones()
+        if "zero" in self.cfg.reward:
+            rewards += self.reward_zero()
         if "stand_forward" in self.cfg.reward:
             rewards += self.reward_stand_forward()
         if "imitation" in self.cfg.reward:
@@ -698,8 +698,8 @@ class Env(DirectRLEnv):
         # print(f"Imitation reward: {torch.mean(reward)}")
         return reward
 
-    def reward_ones(self) -> torch.Tensor:
-        return torch.ones((self.num_envs,), dtype=torch.float32, device=self.sim.device)
+    def reward_zero(self) -> torch.Tensor:
+        return torch.zeros((self.num_envs,), dtype=torch.float32, device=self.sim.device)
     
     def compute_obs(self,
         dof_positions: torch.Tensor,
