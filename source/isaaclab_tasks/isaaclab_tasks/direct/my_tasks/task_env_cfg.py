@@ -17,7 +17,6 @@ class Amp_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
     motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/1_2.npz")
 
-    # reward = ["imitation"]
     reset_strategy = "random_start"
     sync_motion = False
 
@@ -29,13 +28,15 @@ class Amp_InterHuman_2Robots(EnvCfg2RobotsSMPL):
 class Amp_InterHuman(EnvCfg1RobotSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
 
-    # reward = ["imitation"]
     reset_strategy = "random"
+    sync_motion = False
+
+    scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
 
 @configclass
 class AMP_Humanoid(EnvCfg1RobotHumanoid28):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_run.npz")
-    # reward = ["imitation"]
+    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_dance.npz")
+
     reset_strategy = "random"
     sync_motion = False
 

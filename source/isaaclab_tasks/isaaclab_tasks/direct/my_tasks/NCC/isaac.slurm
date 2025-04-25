@@ -30,10 +30,10 @@ export PYTHONPATH=$PYTHONPATH:$path_to_your_repo
 cd "/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/my_tasks"
 
 # AMP interhuman
-# python train.py --task AMP-InterHuman-2Robots --num_envs 4096 --name "motion 1 env4096 steps 8w require another pose" --steps 80000 --params 1024 --wandb --headless --disable_progressbar
+python train.py --task AMP-InterHuman --num_envs 1024 --name "motion26 env1024 steps 50w" --steps 500000 --params 1024 --wandb --headless --disable_progressbar
 
 # AMP humanoid
-python train.py --task AMP-Humanoid --num_envs 1024 --name "run env1024 steps 30w" --steps 300000 --params 1024 --wandb --headless --disable_progressbar
+# python train.py --task AMP-Humanoid --num_envs 1024 --name "dance env1024 steps 50w" --steps 500000 --params 1024 --wandb --headless --disable_progressbar
 
 # PPO interhuman
 # python train.py --task PPO-InterHuman-2Robots --num_envs 512 --name "motion 1 env512 steps 20w imitation" --steps 200000 --wandb --headless --disable_progressbar
