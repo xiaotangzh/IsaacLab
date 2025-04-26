@@ -193,6 +193,11 @@ elif "HRL" in args.task:
     state_preprocessor = RunningStandardScaler(**agent_cfg["state_preprocessor_kwargs"])
     state_preprocessor.load_state_dict(checkpoint["state_preprocessor"])
     agent_cfg["state_preprocessor"] = state_preprocessor
+    # load pretrained AMP modules
+    discriminator = 
+    amp_state_preprocessor = RunningStandardScaler(**agent_cfg["state_preprocessor_kwargs"])
+    amp_state_preprocessor.load_state_dict(checkpoint["amp_state_preprocessor"])
+    agent_cfg["amp_state_preprocessor"] = amp_state_preprocessor
     
     # instantiate the models
     models = instantiate_HRL(env, params=args.params, device=device)

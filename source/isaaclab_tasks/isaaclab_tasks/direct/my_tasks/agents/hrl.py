@@ -151,6 +151,7 @@ class HRL(BaseAgent):
 
         self._state_preprocessor = self.cfg["state_preprocessor"]
         self._value_preprocessor = self.cfg["value_preprocessor"]
+        self._amp_state_preprocessor = self.cfg["amp_state_preprocessor"]
 
         self._discount_factor = self.cfg["discount_factor"]
         self._lambda = self.cfg["lambda"]
@@ -197,6 +198,10 @@ class HRL(BaseAgent):
             self.checkpoint_modules["value_preprocessor"] = self._value_preprocessor
         else:
             self._value_preprocessor = self._empty_preprocessor
+
+        # AMP parts
+        self._amp_state_preprocessor = self._amp_state_preprocessor
+        self._discriminator_reward_scale = 2
 
     def init(self, trainer_cfg: Optional[Mapping[str, Any]] = None) -> None:
         """Initialize the agent"""
@@ -303,6 +308,18 @@ class HRL(BaseAgent):
             # reward shaping
             if self._rewards_shaper is not None:
                 rewards = self._rewards_shaper(rewards, timestep, timesteps)
+            
+            # TODO: AMP reward
+            amp_states = self.memory.get_tensor_by_name("amp_states")
+            with torch.no_grad(), torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
+                amp_logits, _, _ = self.discriminator.act(
+                    {"states": self._amp_state_preprocessor(amp_states)}, role="discriminator"
+                )
+                style_reward = -torch.log(
+                    torch.maximum(1 - 1 / (1 + torch.exp(-amp_logits)), torch.tensor(0.0001, device=self.device))
+                )
+                style_reward *= self._discriminator_reward_scale
+                style_reward = style_reward.view(rewards.shape)
 
             # compute values
             with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):

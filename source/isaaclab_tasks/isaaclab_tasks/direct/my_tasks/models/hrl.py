@@ -24,7 +24,7 @@ class Policy(GaussianMixin, Model):
         # zero initialize
         nn.init.zeros_(self.net[-1].weight)
         nn.init.zeros_(self.net[-1].bias)
-        self.log_std_parameter = nn.Parameter(torch.full((action_space,), -5.0))
+        self.log_std_parameter = nn.Parameter(torch.full((action_space,), -3.0))
 
     def compute(self, inputs, role):
         return self.net(inputs["states"]), self.log_std_parameter, {}
