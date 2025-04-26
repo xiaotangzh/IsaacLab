@@ -38,7 +38,7 @@ class MotionLoader:
         self.duration = MISSING
         print(f"Motion loaded ({motion_file}): duration: {self.duration} sec, frames: {self.num_frames}")
 
-        return data
+        # return data
 
     @property
     def dof_names(self) -> list[str]:
@@ -261,10 +261,26 @@ class MotionLoader:
             indexes.append(self._body_names.index(name))
         return indexes
     
+if __name__ == "__main__":
+    import argparse
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--file", type=str, required=True, help="Motion file")
+    args, _ = parser.parse_known_args()
+
+    motion = MotionLoader(args.file, "cpu")
+
+    print("- number of frames:", motion.num_frames)
+    print("- number of DOFs:", motion.num_dofs)
+    print("- number of bodies:", motion.num_bodies)
+    print("- names of bodies:", motion.body_names)
+    print("- names of DOFs:", motion.dof_names)
+
+    
 class MotionLoaderSMPL(MotionLoader):
     def __init__(self, motion_file: str, device: torch.device) -> None:
-        data = super().__init__(motion_file, device)
+        super().__init__(motion_file, device)
+        data = np.load(motion_file)
 
         self.dof_positions = torch.tensor(data["dof_positions"], dtype=torch.float32, device=self.device)
         self.dof_velocities = torch.tensor(data["dof_velocities"], dtype=torch.float32, device=self.device)
@@ -308,20 +324,29 @@ class MotionLoaderSMPL(MotionLoader):
 
 class MotionLoaderHumanoid28(MotionLoader):
     def __init__(self, motion_file: str, device: torch.device) -> None:
-        data = super().__init__(motion_file, device)
+        super().__init__(motion_file, device)
+        data = np.load(motion_file)
 
         self.dof_positions = torch.tensor(data["dof_positions"], dtype=torch.float32, device=self.device)
         self.dof_velocities = torch.tensor(data["dof_velocities"], dtype=torch.float32, device=self.device)
         self.body_positions = torch.tensor(data["body_positions"], dtype=torch.float32, device=self.device)
         self.body_rotations = torch.tensor(data["body_rotations"], dtype=torch.float32, device=self.device)
-        self.body_linear_velocities = torch.tensor(
-            data["body_linear_velocities"], dtype=torch.float32, device=self.device
-        )
-        self.body_angular_velocities = torch.tensor(
-            data["body_angular_velocities"], dtype=torch.float32, device=self.device
-        )
-        self.root_linear_velocity = self.body_linear_velocities[:,0]
-        self.root_angular_velocity = self.body_angular_velocities[:,0]
+        try:
+            self.body_linear_velocities = torch.tensor(
+                data["body_linear_velocities"], dtype=torch.float32, device=self.device
+            )
+            self.body_angular_velocities = torch.tensor(
+                data["body_angular_velocities"], dtype=torch.float32, device=self.device
+            )
+            self.root_linear_velocity = self.body_linear_velocities[:,0]
+            self.root_angular_velocity = self.body_angular_velocities[:,0]
+        except: # retargeted InterHuman data has no body velocities
+            self.root_linear_velocity = torch.tensor(
+                data["root_linear_velocity"], dtype=torch.float32, device=self.device
+            )
+            self.root_angular_velocity = torch.tensor(
+                data["root_angular_velocity"], dtype=torch.float32, device=self.device
+            )
 
         self.num_frames = self.dof_positions.shape[0]
         self.duration = self.dt * (self.num_frames - 1)

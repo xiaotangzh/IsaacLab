@@ -174,7 +174,7 @@ class BaseAgent:
 
         if self.checkpoint_interval == "auto":
             self.checkpoint_interval = int(trainer_cfg.get("timesteps", 0) / 10)
-        if self.checkpoint_interval > 0:
+        if self.checkpoint_interval > 0 and self.memory.num_envs > 100:
             os.makedirs(os.path.join(self.experiment_dir, "checkpoints"), exist_ok=True)
 
     def track_data(self, tag: str, value: float) -> None:
@@ -682,7 +682,8 @@ class BaseAgent:
                     k: copy.deepcopy(self._get_internal_value(v)) for k, v in self.checkpoint_modules.items()
                 }
             # write checkpoints
-            self.write_checkpoint(timestep, timesteps)
+            if self.memory.num_envs > 100:
+                self.write_checkpoint(timestep, timesteps)
 
         # write to tensorboard
         if timestep > 1 and self.write_interval > 0 and not timestep % self.write_interval:

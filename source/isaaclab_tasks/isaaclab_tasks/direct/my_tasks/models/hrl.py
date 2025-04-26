@@ -13,7 +13,7 @@ class Policy(GaussianMixin, Model):
                               )
 
         self.net = nn.Sequential(
-            nn.Linear(observation_space, params),
+            nn.Linear(observation_space+action_space, params),
             nn.ReLU(),
             nn.Linear(params, int(params/2)),
             nn.ReLU(),
@@ -24,7 +24,7 @@ class Policy(GaussianMixin, Model):
         # zero initialize
         nn.init.zeros_(self.net[-1].weight)
         nn.init.zeros_(self.net[-1].bias)
-        self.log_std_parameter = nn.Parameter(torch.full((action_space,), -3.0))
+        self.log_std_parameter = nn.Parameter(torch.full((action_space,), -1.0))
 
     def compute(self, inputs, role):
         return self.net(inputs["states"]), self.log_std_parameter, {}
@@ -64,6 +64,6 @@ class Value(DeterministicMixin, Model):
     
 def instantiate_HRL(env, params: int=1, device: torch.device | None=None):
     models = {}
-    models["policy"] = Policy(env.action_space.shape[0], env.action_space.shape[0], params=params, device=device)
+    models["policy"] = Policy(env.observation_space.shape[0], env.action_space.shape[0], params=params, device=device)
     models["value"] = Value(env.observation_space.shape[0], env.action_space.shape[0], params=params, device=device)
     return models

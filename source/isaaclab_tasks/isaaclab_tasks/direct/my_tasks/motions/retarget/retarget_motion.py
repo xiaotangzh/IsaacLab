@@ -27,6 +27,7 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # from isaacgym.torch_utils import *
+import sys
 import torch
 import json
 import numpy as np
@@ -34,7 +35,7 @@ import numpy as np
 from poselib.core.rotation3d import *
 from poselib.skeleton.skeleton3d import SkeletonTree, SkeletonState, SkeletonMotion
 from poselib.visualization.common import plot_skeleton_state, plot_skeleton_motion_interactive
-from visualization import animate3D
+from visualization import animate3D, plot_tpose
 
 """
 This scripts shows how to retarget a motion clip from the source skeleton to a target skeleton.
@@ -203,8 +204,13 @@ def project_joints(motion):
     
     return new_motion
 
+def drop_nodes(motion, dropped_nodes: list):
+    new_sk_state = motion.drop_nodes_by_names(dropped_nodes)
+    if type(motion) is SkeletonMotion:
+        return SkeletonMotion.from_skeleton_state(new_sk_state, fps=motion.fps)
+    return new_sk_state
 
-def main():
+def retarget():
     # load retarget config
     retarget_data_path = "./retarget_interhuman_to_humanoid28.json"
     with open(retarget_data_path) as f:
@@ -212,26 +218,32 @@ def main():
 
     # load and visualize t-pose files
     source_tpose = SkeletonState.from_file(retarget_data["source_tpose"])
-    if VISUALIZE:
-        #TODO:
-        pass
+    # if VISUALIZE:
+        # animate3D(source_tpose.global_translation.unsqueeze(0).repeat(2, 1, 1), q=source_tpose.global_rotation[0].unsqueeze(0).repeat(2, 1, 1), title="source tpose")
+        # plot_tpose(source_tpose.global_translation)
 
     target_tpose = SkeletonState.from_file(retarget_data["target_tpose"])
     if VISUALIZE:
-        #TODO:
-        pass
-    
-    # print(source_tpose.skeleton_tree.node_names)
-    # print(target_tpose.skeleton_tree.node_names)
+        animate3D(target_tpose.global_translation.unsqueeze(0).repeat(2, 1, 1), q=target_tpose.global_rotation[0].unsqueeze(0).repeat(2, 1, 1), title="target tpose")
+        plot_tpose(target_tpose.global_translation)
 
     # load and visualize source motion sequence
     source_motion = SkeletonMotion.from_file(retarget_data["source_motion"])
     if VISUALIZE:
-        animate3D(source_motion.global_translation)
+        print(source_motion.global_rotation.shape)
+        animate3D(source_motion.global_translation, q=source_motion.global_rotation[:, 0], title="source motion")
 
     # parse data from retarget config
     joint_mapping = retarget_data["joint_mapping"]
     rotation_to_target_skeleton = torch.tensor(retarget_data["rotation"])
+
+    # joints combine
+    dropped_nodes = ["L_Thorax", "R_Thorax", "L_Wrist", "R_Wrist", "L_Toe", "R_Toe", "Spine", "Chest", "Neck"]
+    source_tpose = drop_nodes(source_tpose, dropped_nodes)
+    source_motion = drop_nodes(source_motion, dropped_nodes)
+    animate3D(source_motion.global_translation, q=source_motion.global_rotation[:, 0], title="after dropping nodes")
+    print(f"After dropping nodes: source motion{source_motion._global_rotation.shape}, source tpose{source_tpose._global_rotation.shape}")
+    _target_motion = source_motion
 
     # run retargeting
     target_motion = source_motion.retarget_to_by_tpose(
@@ -239,19 +251,17 @@ def main():
       source_tpose=source_tpose,
       target_tpose=target_tpose,
       rotation_to_target_skeleton=rotation_to_target_skeleton,
-      scale_to_target_skeleton=retarget_data["scale"]
+      scale_to_target_skeleton=retarget_data["scale"],
+      z_up=False
     )
     if VISUALIZE:
-        animate3D(target_motion.global_translation)
+        animate3D(target_motion.global_translation, q=target_motion.global_rotation[:, 0], title="retargeted motion")
 
     # keep frames between [trim_frame_beg, trim_frame_end - 1]
     frame_beg = retarget_data["trim_frame_beg"]
     frame_end = retarget_data["trim_frame_end"]
-    if (frame_beg == -1):
-        frame_beg = 0
-        
-    if (frame_end == -1):
-        frame_end = target_motion.local_rotation.shape[0]
+    if (frame_beg == -1): frame_beg = 0
+    if (frame_end == -1): frame_end = target_motion.local_rotation.shape[0]
         
     local_rotation = target_motion.local_rotation
     root_translation = target_motion.root_translation
@@ -279,13 +289,13 @@ def main():
     target_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=target_motion.fps)
 
     # save retargeted motion
-    target_motion.to_file(retarget_data["target_motion_path"])
+    _target_motion.to_file(retarget_data["target_motion_path"])
 
     # visualize retargeted motion
     if VISUALIZE:
-        animate3D(target_motion.global_translation)
+        animate3D(target_motion.global_translation, q=target_motion.global_rotation[0], title="after projecting joints")
     
     return
 
 if __name__ == '__main__':
-    main()
+    retarget()

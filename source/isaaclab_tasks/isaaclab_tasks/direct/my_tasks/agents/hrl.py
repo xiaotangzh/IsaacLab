@@ -151,7 +151,6 @@ class HRL(BaseAgent):
 
         self._state_preprocessor = self.cfg["state_preprocessor"]
         self._value_preprocessor = self.cfg["value_preprocessor"]
-        self._amp_state_preprocessor = self.cfg["amp_state_preprocessor"]
 
         self._discount_factor = self.cfg["discount_factor"]
         self._lambda = self.cfg["lambda"]
@@ -188,7 +187,7 @@ class HRL(BaseAgent):
 
         # set up preprocessors
         if self._state_preprocessor:
-            # self._state_preprocessor = self._state_preprocessor(**self.cfg["state_preprocessor_kwargs"])
+            self._state_preprocessor = self._state_preprocessor(**self.cfg["state_preprocessor_kwargs"])
             self.checkpoint_modules["state_preprocessor"] = self._state_preprocessor
         else:
             self._state_preprocessor = self._empty_preprocessor
@@ -200,8 +199,11 @@ class HRL(BaseAgent):
             self._value_preprocessor = self._empty_preprocessor
 
         # AMP parts
-        self._amp_state_preprocessor = self._amp_state_preprocessor
+        self.pretrained_state_preprocessor = self.cfg["pretrained_state_preprocessor"]
+        self._amp_state_preprocessor = self.cfg["amp_state_preprocessor"]
+        self.discriminator = self.cfg["discriminator"]
         self._discriminator_reward_scale = 2
+        self.amp_observation_space = self.cfg["amp_observation_space"]
 
     def init(self, trainer_cfg: Optional[Mapping[str, Any]] = None) -> None:
         """Initialize the agent"""
@@ -219,6 +221,7 @@ class HRL(BaseAgent):
             self.memory.create_tensor(name="values", size=1, dtype=torch.float32)
             self.memory.create_tensor(name="returns", size=1, dtype=torch.float32)
             self.memory.create_tensor(name="advantages", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="amp_states", size=self.amp_observation_space, dtype=torch.float32)
 
             # tensors sampled during training
             self._tensors_names = ["states", "actions", "log_prob", "values", "returns", "advantages"]
@@ -258,8 +261,8 @@ class HRL(BaseAgent):
 
         # sample stochastic actions
         with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-            actions = self.pretrained_policy_act({"states": self._state_preprocessor(states)}, role="pretrained_policy")
-            residual_actions, log_prob, outputs = self.policy.act({"states": actions}, role="policy") 
+            actions = self.pretrained_policy_act({"states": self.pretrained_state_preprocessor(states)}, role="pretrained_policy")
+            residual_actions, log_prob, outputs = self.policy.act({"states": torch.cat([self._state_preprocessor(states), actions], dim=-1)}, role="policy") 
             actions = actions + residual_actions
             self._current_log_prob = log_prob
 
@@ -298,6 +301,22 @@ class HRL(BaseAgent):
         :param timesteps: Number of timesteps
         :type timesteps: int
         """
+
+        # AMP reward
+        amp_states = infos["amp_obs"]
+        # with torch.no_grad(), torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
+        #     self.discriminator.eval().to(self.device)
+        #     amp_logits, _, _ = self.discriminator.act(
+        #         {"states": self._amp_state_preprocessor(amp_states)}, role="discriminator"
+        #     )
+        #     style_reward = -torch.log(
+        #         torch.maximum(1 - 1 / (1 + torch.exp(-amp_logits)), torch.tensor(0.0001, device=self.device))
+        #     )
+        #     style_reward *= self._discriminator_reward_scale
+        #     style_reward = style_reward.view(rewards.shape)
+        #     rewards = style_reward
+        # in order to record AMP rewards to BaseAgent
+
         super().record_transition(
             states, actions, rewards, next_states, terminated, truncated, infos, timestep, timesteps
         )
@@ -308,18 +327,6 @@ class HRL(BaseAgent):
             # reward shaping
             if self._rewards_shaper is not None:
                 rewards = self._rewards_shaper(rewards, timestep, timesteps)
-            
-            # TODO: AMP reward
-            amp_states = self.memory.get_tensor_by_name("amp_states")
-            with torch.no_grad(), torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-                amp_logits, _, _ = self.discriminator.act(
-                    {"states": self._amp_state_preprocessor(amp_states)}, role="discriminator"
-                )
-                style_reward = -torch.log(
-                    torch.maximum(1 - 1 / (1 + torch.exp(-amp_logits)), torch.tensor(0.0001, device=self.device))
-                )
-                style_reward *= self._discriminator_reward_scale
-                style_reward = style_reward.view(rewards.shape)
 
             # compute values
             with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
@@ -340,6 +347,7 @@ class HRL(BaseAgent):
                 truncated=truncated,
                 log_prob=self._current_log_prob,
                 values=values,
+                amp_states=amp_states,
             )
             for memory in self.secondary_memories:
                 memory.add_samples(
@@ -351,6 +359,7 @@ class HRL(BaseAgent):
                     truncated=truncated,
                     log_prob=self._current_log_prob,
                     values=values,
+                    amp_states=amp_states,
                 )
 
     def pre_interaction(self, timestep: int, timesteps: int) -> None:
@@ -484,11 +493,11 @@ class HRL(BaseAgent):
 
                     sampled_states = self._state_preprocessor(sampled_states, train=not epoch)
 
-                    actions = self.pretrained_policy_act({"states": self._state_preprocessor(sampled_states)}, 
+                    actions = self.pretrained_policy_act({"states": self.pretrained_state_preprocessor(sampled_states)}, 
                     role="pretrained_policy")
                     residual_actions = sampled_actions - actions
                     _, next_log_prob, _ = self.policy.act(
-                        {"states": actions, "taken_actions": residual_actions}, role="policy"
+                        {"states": torch.cat([self._state_preprocessor(sampled_states), actions], dim=-1), "taken_actions": residual_actions}, role="policy"
                     )
 
                     # compute approximate KL divergence

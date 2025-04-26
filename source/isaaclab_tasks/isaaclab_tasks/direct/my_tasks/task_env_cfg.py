@@ -67,10 +67,11 @@ class PPO_InterHuman_2Robots(EnvCfg2RobotsSMPL):
 
 @configclass
 class PPO_Humanoid(EnvCfg1RobotHumanoid28):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_walk.npz")
+    # motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_walk.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_humanoid28/1_person1.npz")
     reward = ["com_acc", "imitation"]
     reset_strategy = "random_start"
-    sync_motion = False
+    sync_motion = True
 
     # terrain = "uneven"
     # init_root_height = 2.0
@@ -94,7 +95,7 @@ class HRL_InterHuman(EnvCfg1RobotSMPL):
 class HRL_Humanoid(EnvCfg1RobotHumanoid28):
     motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_walk.npz")
 
-    reward = ["stand_forward"]
+    reward = ["com_acc"] 
     reset_strategy = "random_start"
 
     terrain = "uneven"

@@ -150,6 +150,7 @@ elif "HRL" in args.task:
     
     # IsaacLab AMP default configurations
     agent_cfg["state_preprocessor_kwargs"] = {"size": env.observation_space}
+    agent_cfg["amp_state_preprocessor_kwargs"] = {"size": env.amp_observation_size}
     agent_cfg["value_preprocessor_kwargs"] = {"size": 1}
     agent_cfg["clip_predicted_values"] = True
     
@@ -187,17 +188,20 @@ elif "HRL" in args.task:
     # load pretrained policy
     checkpoint = "./logs/AMP-Humanoid/PRETRAINED/walk env1024 lr5e-5 steps30w/checkpoints/best_agent.pt"
     checkpoint = torch.load(checkpoint, map_location=device, weights_only=True)
-    pretrained_policy = instantiate_AMP_Policy(env, params=args.params, device=device)
+    pretrained_policy = instantiate_AMP_policy(env, params=args.params, device=device)
     pretrained_policy.load_state_dict(checkpoint["policy"])
     # load pretrained state preprocessor
-    state_preprocessor = RunningStandardScaler(**agent_cfg["state_preprocessor_kwargs"])
-    state_preprocessor.load_state_dict(checkpoint["state_preprocessor"])
-    agent_cfg["state_preprocessor"] = state_preprocessor
+    pretrained_state_preprocessor = RunningStandardScaler(**agent_cfg["state_preprocessor_kwargs"])
+    pretrained_state_preprocessor.load_state_dict(checkpoint["state_preprocessor"])
+    agent_cfg["pretrained_state_preprocessor"] = pretrained_state_preprocessor
     # load pretrained AMP modules
-    discriminator = 
-    amp_state_preprocessor = RunningStandardScaler(**agent_cfg["state_preprocessor_kwargs"])
+    discriminator = instantiate_AMP_discriminator(env, params=args.params, device=device)
+    discriminator.load_state_dict(checkpoint["discriminator"])
+    agent_cfg["discriminator"] = discriminator
+    amp_state_preprocessor = RunningStandardScaler(**agent_cfg["amp_state_preprocessor_kwargs"])
     amp_state_preprocessor.load_state_dict(checkpoint["amp_state_preprocessor"])
     agent_cfg["amp_state_preprocessor"] = amp_state_preprocessor
+    agent_cfg["amp_observation_space"] = env.amp_observation_size
     
     # instantiate the models
     models = instantiate_HRL(env, params=args.params, device=device)

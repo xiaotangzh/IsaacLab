@@ -5,7 +5,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.animation import FuncAnimation
 import argparse
 
-def animate3D(tensor, highlight_joint: int=0, q: torch.Tensor | None=None, w_last: bool=True):
+def animate3D(tensor, highlight_joint: int=0, q: torch.Tensor | None=None, w_last: bool=True, title: str = ""):
     if type(tensor) is torch.Tensor: tensor = tensor.numpy()
 
     fig = plt.figure(figsize=(10, 8))
@@ -22,7 +22,7 @@ def animate3D(tensor, highlight_joint: int=0, q: torch.Tensor | None=None, w_las
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
-    title = ax.set_title('Frame: 0')
+    ax_title = ax.set_title("Frame: 0")
 
     scatter = ax.scatter([], [], [], c='red', s=50)
     highlight_scatter = ax.scatter([], [], [], c='blue', s=80) 
@@ -77,8 +77,8 @@ def animate3D(tensor, highlight_joint: int=0, q: torch.Tensor | None=None, w_las
                 color='blue', arrow_length_ratio=0.2, linewidth=2
             )
         
-        title.set_text(f'Frame: {frame}/{tensor.shape[0]}')
-        artists = [scatter, highlight_scatter, title]
+        ax_title.set_text(f"{title}   Frame: {frame}/{tensor.shape[0]}")
+        artists = [scatter, highlight_scatter, ax_title]
         if quiver_artist is not None:
             artists.append(quiver_artist)
         return artists
@@ -89,6 +89,26 @@ def animate3D(tensor, highlight_joint: int=0, q: torch.Tensor | None=None, w_las
     )
 
     plt.show()  
+
+def plot_tpose(points):
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+
+    # 取出 x, y, z
+    x = points[:, 0].numpy()
+    y = points[:, 1].numpy()
+    z = points[:, 2].numpy()
+
+    # 画散点图
+    ax.scatter(x, y, z)
+
+    # 加标签
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+
+    # 显示
+    plt.show()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

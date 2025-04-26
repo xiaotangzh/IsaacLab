@@ -32,37 +32,44 @@ import torch
 from poselib.core.rotation3d import *
 from poselib.skeleton.skeleton3d import SkeletonTree, SkeletonState
 from poselib.visualization.common import plot_skeleton_state
-from visualization import animate3D
+from visualization import animate3D, plot_tpose
 
 """
 This scripts imports a MJCF XML file and converts the skeleton into a SkeletonTree format.
 It then generates a zero rotation pose, and adjusts the pose into a T-Pose.
 """
+def main(skeleton: str = "humanoid28",):
+    # import MJCF file
+    if skeleton == "humanoid28":
+        xml_path = "../assets/amp_humanoid.xml"
+    elif skeleton == "SMPL":
+        xml_path = "../assets/smpl_humanoid.xml"
+    skeleton = SkeletonTree.from_mjcf(xml_path)
+    print(skeleton.node_names, skeleton.num_joints)
 
-# import MJCF file
-xml_path = "../assets/smpl_humanoid.xml"
-skeleton = SkeletonTree.from_mjcf(xml_path)
+    # generate zero rotation pose
+    zero_pose = SkeletonState.zero_pose(skeleton)
 
-# generate zero rotation pose
-zero_pose = SkeletonState.zero_pose(skeleton)
+    # adjust pose into a T Pose
+    # local_rotation = zero_pose.local_rotation
+    # local_rotation[skeleton.index("left_upper_arm")] = quat_mul(
+    #     quat_from_angle_axis(angle=torch.tensor([90.0]), axis=torch.tensor([1.0, 0.0, 0.0]), degree=True), 
+    #     local_rotation[skeleton.index("left_upper_arm")]
+    # )
+    # local_rotation[skeleton.index("right_upper_arm")] = quat_mul(
+    #     quat_from_angle_axis(angle=torch.tensor([-90.0]), axis=torch.tensor([1.0, 0.0, 0.0]), degree=True), 
+    #     local_rotation[skeleton.index("right_upper_arm")]
+    # )
+    # translation = zero_pose.root_translation
+    # translation += torch.tensor([0, 0, 0.9])
 
-# adjust pose into a T Pose
-# local_rotation = zero_pose.local_rotation
-# local_rotation[skeleton.index("left_upper_arm")] = quat_mul(
-#     quat_from_angle_axis(angle=torch.tensor([90.0]), axis=torch.tensor([1.0, 0.0, 0.0]), degree=True), 
-#     local_rotation[skeleton.index("left_upper_arm")]
-# )
-# local_rotation[skeleton.index("right_upper_arm")] = quat_mul(
-#     quat_from_angle_axis(angle=torch.tensor([-90.0]), axis=torch.tensor([1.0, 0.0, 0.0]), degree=True), 
-#     local_rotation[skeleton.index("right_upper_arm")]
-# )
-# translation = zero_pose.root_translation
-# translation += torch.tensor([0, 0, 0.9])
+    # save and visualize T-pose
+    if skeleton == "humanoid28":
+        zero_pose.to_file("tpose/humanoid.npy")
+    elif skeleton == "SMPL":
+        zero_pose.to_file("tpose/smpl.npy")
 
-# save and visualize T-pose
-# zero_pose.to_file("data/amp_humanoid_tpose.npy")
+    plot_tpose(zero_pose.global_translation)
 
-print(zero_pose.global_translation)
-animate3D(zero_pose.global_translation)
-
-plot_skeleton_state(zero_pose)
+if __name__ == "__main__":
+    main("SMPL")

@@ -126,3 +126,5 @@ class Serializable:
                 json.dump(d, f, cls=NumpyEncoder, indent=4)
         elif path.endswith(".npy"):
             np.save(path, d)
+        elif path.endswith(".npz"):
+            np.savez(path, d)

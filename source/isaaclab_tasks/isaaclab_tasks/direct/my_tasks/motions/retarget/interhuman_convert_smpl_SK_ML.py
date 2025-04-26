@@ -108,7 +108,7 @@ if __name__ == "__main__":
                     
     # if single file
     elif 'pkl' in args.in_file:
-        path, name = "../InterHuman", args.in_file.replace('.pkl','').replace('in_files/','')
+        path, name = "../InterHuman_SMPL", args.in_file.replace('.pkl','').replace('in_files/','')
         if not two_persons:
             data = convert(path=path, file_name=name, visualize=args.visualize)
             save_npz(path, name, data, min_frames)

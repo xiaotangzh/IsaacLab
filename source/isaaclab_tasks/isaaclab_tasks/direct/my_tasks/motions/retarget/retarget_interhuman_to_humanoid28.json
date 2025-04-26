@@ -1,8 +1,8 @@
 {
     "source_motion": "out_files/InterHuman_SKMotion_1_person1.npy",
-    "target_motion_path": "out_files/Humanoid28_SKMotion_1_person1.npy",
+    "target_motion_path": "out_files/Humanoid28_SKMotion_InterHuman_1_person1.npy",
     "source_tpose": "tpose/smpl.npy",
-    "target_tpose": "tpose/humanoid28.npy",
+    "target_tpose": "tpose/amp_humanoid.npy",
     "joint_mapping": {
          "Pelvis": "pelvis",
          "L_Hip": "left_thigh",
@@ -15,12 +15,12 @@
          "Head": "head",
          "L_Shoulder": "left_upper_arm",
          "L_Elbow": "left_lower_arm",
-         "L_Wrist": "left_hand",
+         "L_Hand": "left_hand",
          "R_Shoulder": "right_upper_arm",
          "R_Elbow": "right_lower_arm",
-         "R_Wrist": "right_hand"
+         "R_Hand": "right_hand"
     },
-    "rotation": [0, 0, 0.7071068, 0.7071068],
+    "rotation": [0, 0, 0.7071068, 0.70710680],
     "scale": 1,
 	"root_height_offset": 0,
 	"trim_frame_beg": -1,
