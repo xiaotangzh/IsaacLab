@@ -35,7 +35,7 @@ class Amp_InterHuman(EnvCfg1RobotSMPL):
 
 @configclass
 class AMP_Humanoid(EnvCfg1RobotHumanoid28):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_run.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_dance.npz")
 
     reset_strategy = "random"
     sync_motion = False
