@@ -5,6 +5,7 @@ from skrl.memories.torch import RandomMemory
 from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.trainers.torch import SequentialTrainer
 from skrl.utils import set_seed
+from skrl.models.torch import Model
 
 import torch
 import argparse
@@ -28,12 +29,14 @@ parser.add_argument("--wandb", action="store_true", default=False, help="Log tra
 parser.add_argument("--lr", type=float, default=None, help="Learning rate.")
 parser.add_argument("--params", type=int, default=1024, help="Number of parameters for learning.") 
 parser.add_argument("--disable_progressbar", action="store_true", default=False, help="Disable progress bar of tqdm.")
+parser.add_argument("--eval", action="store_true", default=False, help="Evaluate the models and disable require_grad.")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # load and wrap the Isaac Lab environment
 AppLauncher.add_app_launcher_args(parser)
 args, hydra_args = parser.parse_known_args()
 experiment_name = f"{args.task} {args.name}" if args.name else f"{args.task} {datetime.datetime.now().strftime('%d_%H-%M')}"
+checkpoint_interval = min(30000, args.steps // 10)
 
 # start the app
 app_launcher = AppLauncher(args)
@@ -49,14 +52,15 @@ env = wrap_env(env)
 
 # agent configuration
 from agents.amp import AMP, AMP_DEFAULT_CONFIG
+from agents.aip import AIP, AIP_DEFAULT_CONFIG
 from agents.ppo import PPO, PPO_DEFAULT_CONFIG
 from agents.hrl import HRL, HRL_DEFAULT_CONFIG
 from models.amp import *
+from models.aip import *
 from models.hrl import *
 from models.ppo import *
 agent, agent_cfg = None, None
 
-# IsaacLab AMP default configurations
 if "AMP" in args.task:
     agent_cfg = AMP_DEFAULT_CONFIG.copy()
     agent_cfg["state_preprocessor_kwargs"] = {"size": env.observation_space}
@@ -86,7 +90,7 @@ if "AMP" in args.task:
         "directory": os.path.join("logs", args.task), 
         "experiment_name": args.name, 
         "write_interval": 100,   
-        "checkpoint_interval": "auto",  
+        "checkpoint_interval": checkpoint_interval,  
         "wandb": args.wandb,      
         "wandb_kwargs": {
             "entity": "xiaotang-zhang",
@@ -106,6 +110,71 @@ if "AMP" in args.task:
                 motion_dataset=motion_dataset,
                 reply_buffer=reply_buffer,
                 collect_reference_motions=env.collect_reference_motions,
+                device=device)
+
+if "AIP" in args.task:
+    agent_cfg = AIP_DEFAULT_CONFIG.copy()
+    agent_cfg["state_preprocessor_kwargs"] = {"size": env.observation_space}
+    agent_cfg["value_preprocessor_kwargs"] = {"size": 1}
+    agent_cfg["amp_state_preprocessor_kwargs"] = {"size": env.amp_observation_size}
+    agent_cfg["amp_inter_state_preprocessor_kwargs"] = {"size": env.amp_inter_observation_size}
+    agent_cfg["task_reward_weight"] = 0.0
+    
+    # memory configuration
+    rollout_memory = RandomMemory(
+        memory_size=agent_cfg["rollouts"], 
+        num_envs=env.num_envs, 
+        device=device  
+    )
+    motion_dataset = RandomMemory(
+        memory_size=200000,
+        device=device
+    )
+    reply_buffer = RandomMemory(
+        memory_size=1000000, 
+        # num_envs must be 1 to avoid memory samples shape errors
+        device=device,
+    )
+    interaction_dataset = RandomMemory(
+        memory_size=200000,
+        device=device
+    )
+    reply_buffer_inter = RandomMemory(
+        memory_size=1000000, 
+        # num_envs must be 1 to avoid memory samples shape errors
+        device=device,
+    )
+    
+    # custom configurations
+    if args.lr: agent_cfg["learning_rate"] = args.lr
+    agent_cfg["experiment"] = {
+        "directory": os.path.join("logs", args.task), 
+        "experiment_name": args.name, 
+        "write_interval": 100,   
+        "checkpoint_interval": checkpoint_interval,  
+        "wandb": args.wandb,      
+        "wandb_kwargs": {
+            "entity": "xiaotang-zhang",
+            "project": "IsaacLab",
+            "name": experiment_name,
+        }
+    }
+    
+    # instantiate the models
+    models = instantiate_AIP(env, params=args.params, device=device)
+    agent = AIP(models=models,
+                memory=rollout_memory,  
+                cfg=agent_cfg,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                amp_observation_space=env.amp_observation_size,
+                amp_inter_observation_space=env.amp_inter_observation_size,
+                motion_dataset=motion_dataset,
+                reply_buffer=reply_buffer,
+                interaction_dataset=interaction_dataset,
+                reply_buffer_inter=reply_buffer_inter,
+                collect_reference_motions=env.collect_reference_motions,
+                collect_reference_interactions=env.collect_reference_interactions,
                 device=device)
 elif "PPO" in args.task:
     agent_cfg = PPO_DEFAULT_CONFIG.copy()
@@ -128,7 +197,7 @@ elif "PPO" in args.task:
         "directory": os.path.join("logs", args.task), 
         "experiment_name": args.name, 
         "write_interval": 100,   
-        "checkpoint_interval": "auto",  
+        "checkpoint_interval": checkpoint_interval,  
         "wandb": args.wandb,      
         "wandb_kwargs": {
             "entity": "xiaotang-zhang",
@@ -176,7 +245,7 @@ elif "HRL" in args.task:
         "directory": os.path.join("logs", args.task), 
         "experiment_name": args.name, 
         "write_interval": 100,   
-        "checkpoint_interval": "auto",  
+        "checkpoint_interval": checkpoint_interval,  
         "wandb": args.wandb,      
         "wandb_kwargs": {
             "entity": "xiaotang-zhang",
@@ -226,8 +295,14 @@ if args.checkpoint:
         print(f"[INFO] Loading model checkpoint from: {resume_path}")
         agent.load(resume_path)
 
-# start training
-trainer.train()
+
+if args.eval: 
+    for k, v in vars(agent).items():
+        if isinstance(v, Model):
+            for p in v.parameters():
+                p.requires_grad = False
+else:
+    trainer.train()
 
 # close the simulator
 env.close()

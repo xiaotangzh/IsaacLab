@@ -52,12 +52,14 @@ class BaseEnvCfg(DirectRLEnvCfg):
     termination_bodies: list = MISSING
     termination_heights: list = MISSING
     reference_body: str = MISSING
-    sync_motion: bool = False # apply reference actions instead of predicted actions to robots
+    sync_motion: int | bool = False # apply reference actions instead of predicted actions to robots
     reset_strategy: str = "default"  # default, random, random-start (time zero from dataset)
 
     # two-character config
     require_relative_pose: bool = False # require precompute relative body positions between two robots
     require_another_pose: bool = False # require the local pose information of another character
+    pairwise_joint_distance: bool = False # require pairwise joint distance between two robots
+    amp_inter_observation_space: int = 0 # observation space for inter robot features
 
     # simulation
     episode_length_s = -1 #10.0 # 10s * 30fps = 300 frames
@@ -142,8 +144,8 @@ class EnvCfg1Robot(BaseEnvCfg):
     motion_file_1: str = MISSING
 
 class EnvCfg2Robots(BaseEnvCfg):
-    robot1: ArticulationCfg = MISSING
-    robot2: ArticulationCfg = MISSING
+    robot1: None | ArticulationCfg = MISSING
+    robot2: None | ArticulationCfg = MISSING
     motion_file_1: str = MISSING
     motion_file_2: str = MISSING
 

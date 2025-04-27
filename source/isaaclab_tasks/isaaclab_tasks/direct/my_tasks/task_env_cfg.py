@@ -13,7 +13,7 @@ MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions"
 
 ### AMP
 @configclass
-class Amp_InterHuman_2Robots(EnvCfg2RobotsSMPL):
+class AMP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_1.npz")
     motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_2.npz")
 
@@ -25,7 +25,7 @@ class Amp_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     amp_observation_space =  2 * 151
 
 @configclass
-class Amp_InterHuman(EnvCfg1RobotSMPL):
+class AMP_InterHuman(EnvCfg1RobotSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_1.npz")
 
     reset_strategy = "random"
@@ -37,11 +37,32 @@ class Amp_InterHuman(EnvCfg1RobotSMPL):
 class AMP_Humanoid(EnvCfg1RobotHumanoid28):
     motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_walk.npz")
 
-    reset_strategy = "random"
+    reset_strategy = "random_start"
     sync_motion = False
-    terrain = "rough"
+    # terrain = "rough"
 
     scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
+
+### AIP
+@configclass
+class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
+    # sync motion to test_robot
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_1.npz")
+    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_2.npz")
+    robot2 = None
+    test_robot: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/TestRobot")
+
+    reset_strategy = "random"
+    sync_motion = 2
+
+    observation_space = 151 + (5 * 5)
+    action_space = 69
+    amp_observation_space =  151
+    amp_inter_observation_space =  (5 * 5) # key bodies
+    pairwise_joint_distance = True
+    key_body_names = ["L_Hand", "R_Hand", "L_Toe", "R_Toe", "Head"]
+    scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
+    # action_clip = [None, None] 
 
 ### PPO
 @configclass

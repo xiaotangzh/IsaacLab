@@ -31,14 +31,14 @@ class MotionLoader:
         self.device = device
         self._dof_names = data["dof_names"].tolist()
         self._body_names = data["body_names"].tolist()
-        self.relative_pose = None # [frames, body num, 3]
-
         self.dt = 1.0 / data["fps"]
         self.num_frames = MISSING
         self.duration = MISSING
         print(f"Motion loaded ({motion_file}): duration: {self.duration} sec, frames: {self.num_frames}")
 
-        # return data
+        # two characters properties
+        self.relative_pose: torch.Tensor | None = None # [frames, body_num, 3]
+        self.pairwise_joint_distance: torch.Tensor | None = None # [frames, body_num * body_num, 3]
 
     @property
     def dof_names(self) -> list[str]:
@@ -197,7 +197,7 @@ class MotionLoader:
         index_1 = np.minimum(index_0 + 1, self.num_frames - 1)
         return index_0, index_1
 
-    def sample_times(self, num_samples: int, duration: float | None = None, upper_bound: float = 0.95) -> np.ndarray:
+    def sample_times(self, num_samples: int, duration: float | None = None, upper_bound: float = 0.0) -> np.ndarray:
         """Sample random motion times uniformly.
 
         Args:
@@ -217,13 +217,22 @@ class MotionLoader:
         duration = (duration - 1) if (self.duration - duration * upper_bound) < 1 else duration
         return duration * np.random.uniform(low=0.0, high=1.0, size=num_samples)
 
-    def get_relative_pose(self, times: np.ndarray | None=None, frame: torch.Tensor | None=None) -> torch.Tensor: # frame=(num_envs,)
-        assert self.relative_pose is not None
+    # time computing is not correct
+    # def get_relative_pose(self, times: np.ndarray | None=None, frame: torch.Tensor | None=None) -> torch.Tensor: # frame=(num_envs,)
+    #     assert self.relative_pose is not None
+    #     if frame is not None:
+    #         return self.relative_pose[frame]
+    #     else: 
+    #         frame0, frame1 = self._get_frame_index_from_time(times)
+    #         return torch.cat([self.relative_pose[frame0], self.relative_pose[frame1]], dim=0)
+    
+    def get_pairwise_joint_distance(self, times: np.ndarray | None=None, frame: torch.Tensor | None=None) -> torch.Tensor: # frame=(num_envs,)
+        assert self.pairwise_joint_distance is not None
         if frame is not None:
-            return self.relative_pose[frame]
+            return self.pairwise_joint_distance[frame]
         else: 
             frame0, frame1 = self._get_frame_index_from_time(times)
-            return torch.cat([self.relative_pose[frame0], self.relative_pose[frame1]], dim=0)
+            return torch.cat([self.pairwise_joint_distance[frame0], self.pairwise_joint_distance[frame1]], dim=0)
 
     def get_dof_index(self, dof_names: list[str]) -> list[int]:
         """Get skeleton DOFs indexes by DOFs names.

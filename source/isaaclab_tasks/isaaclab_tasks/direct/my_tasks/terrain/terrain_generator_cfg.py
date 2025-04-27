@@ -47,7 +47,7 @@ ROUGH_TERRAINS_CFG = TerrainGeneratorCfg(
         #     proportion=1.0, amplitude_range=(0.0, 0.2), num_waves=4, border_width=0.25
         # ),
         "random_rough": terrain_gen.HfRandomUniformTerrainCfg(
-            proportion=0.2, noise_range=(0.0, 0.06), noise_step=0.02, border_width=0.25
+            proportion=1.0, noise_range=(0.0, 0.06), noise_step=0.02, border_width=0.25
         ),
     },
 )
