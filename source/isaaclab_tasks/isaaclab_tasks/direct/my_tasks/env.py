@@ -111,7 +111,7 @@ class Env(DirectRLEnv):
         self.robot2 = Articulation(self.cfg.robot2) if hasattr(self.cfg, "robot2") else None
 
         # add ground plane
-        if self.cfg.terrain == "uneven":
+        if self.cfg.terrain == "rough":
             TerrainImporter(self.cfg.terrain_cfg)
         else:
             spawn_ground_plane(

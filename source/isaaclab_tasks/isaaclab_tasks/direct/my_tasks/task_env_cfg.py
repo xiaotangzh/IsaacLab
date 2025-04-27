@@ -39,7 +39,7 @@ class AMP_Humanoid(EnvCfg1RobotHumanoid28):
 
     reset_strategy = "random"
     sync_motion = False
-    terrain = "uneven"
+    terrain = "rough"
 
     scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
 
@@ -74,7 +74,7 @@ class PPO_Humanoid(EnvCfg1RobotHumanoid28):
     reset_strategy = "random_start"
     sync_motion = True
 
-    # terrain = "uneven"
+    # terrain = "rough"
     # init_root_height = 2.0
     episode_length_s = 30.0
 
@@ -89,7 +89,7 @@ class HRL_InterHuman(EnvCfg1RobotSMPL):
     reward = ["com_acc"]
     reset_strategy = "random_start"
 
-    terrain = "uneven"
+    terrain = "rough"
     init_root_height = 0.3
 
 @configclass
@@ -99,7 +99,7 @@ class HRL_Humanoid(EnvCfg1RobotHumanoid28):
     reward = ["com_acc"] 
     reset_strategy = "random_start"
 
-    terrain = "uneven"
+    terrain = "rough"
     # init_root_height = 0.15
 
     # sync_motion = True
