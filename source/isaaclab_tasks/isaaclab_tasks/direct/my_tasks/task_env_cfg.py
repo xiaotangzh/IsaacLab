@@ -29,16 +29,17 @@ class Amp_InterHuman(EnvCfg1RobotSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_1.npz")
 
     reset_strategy = "random"
-    sync_motion = False
+    sync_motion = True
 
     scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
 
 @configclass
 class AMP_Humanoid(EnvCfg1RobotHumanoid28):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_dance.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_walk.npz")
 
     reset_strategy = "random"
     sync_motion = False
+    terrain = "uneven"
 
     scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
 

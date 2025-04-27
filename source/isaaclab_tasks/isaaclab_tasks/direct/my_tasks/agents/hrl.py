@@ -1,3 +1,4 @@
+from os import times
 from typing import Any, Mapping, Optional, Tuple, Union
 
 import copy
@@ -222,9 +223,11 @@ class HRL(BaseAgent):
             self.memory.create_tensor(name="returns", size=1, dtype=torch.float32)
             self.memory.create_tensor(name="advantages", size=1, dtype=torch.float32)
             self.memory.create_tensor(name="amp_states", size=self.amp_observation_space, dtype=torch.float32)
+            self.memory.create_tensor(name="timestep", size=1, dtype=torch.int)
+            self.memory.create_tensor(name="timesteps", size=1, dtype=torch.int)
 
             # tensors sampled during training
-            self._tensors_names = ["states", "actions", "log_prob", "values", "returns", "advantages"]
+            self._tensors_names = ["states", "actions", "log_prob", "values", "returns", "advantages", "timestep", "timesteps"]
 
         # create temporary variables needed for storage and computation
         self._current_log_prob = None
@@ -263,8 +266,11 @@ class HRL(BaseAgent):
         with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
             actions = self.pretrained_policy_act({"states": self.pretrained_state_preprocessor(states)}, role="pretrained_policy")
             residual_actions, log_prob, outputs = self.policy.act({"states": torch.cat([self._state_preprocessor(states), actions], dim=-1)}, role="policy") 
+            # residual_scale = min(1.0, timestep / timesteps)
             actions = actions + residual_actions
             self._current_log_prob = log_prob
+
+            print(f"Pretrained actions: {torch.mean(actions)}, Residual actions: {torch.mean(residual_actions)}")
 
         return actions, log_prob, outputs
 
@@ -304,17 +310,17 @@ class HRL(BaseAgent):
 
         # AMP reward
         amp_states = infos["amp_obs"]
-        # with torch.no_grad(), torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-        #     self.discriminator.eval().to(self.device)
-        #     amp_logits, _, _ = self.discriminator.act(
-        #         {"states": self._amp_state_preprocessor(amp_states)}, role="discriminator"
-        #     )
-        #     style_reward = -torch.log(
-        #         torch.maximum(1 - 1 / (1 + torch.exp(-amp_logits)), torch.tensor(0.0001, device=self.device))
-        #     )
-        #     style_reward *= self._discriminator_reward_scale
-        #     style_reward = style_reward.view(rewards.shape)
-        #     rewards = style_reward
+        with torch.no_grad(), torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
+            self.discriminator.eval().to(self.device)
+            amp_logits, _, _ = self.discriminator.act(
+                {"states": self._amp_state_preprocessor(amp_states)}, role="discriminator"
+            )
+            style_reward = -torch.log(
+                torch.maximum(1 - 1 / (1 + torch.exp(-amp_logits)), torch.tensor(0.0001, device=self.device))
+            )
+            style_reward *= self._discriminator_reward_scale
+            style_reward = style_reward.view(rewards.shape)
+            rewards = style_reward
         # in order to record AMP rewards to BaseAgent
 
         super().record_transition(
@@ -348,6 +354,8 @@ class HRL(BaseAgent):
                 log_prob=self._current_log_prob,
                 values=values,
                 amp_states=amp_states,
+                timestep=timestep,
+                timesteps=timesteps,
             )
             for memory in self.secondary_memories:
                 memory.add_samples(
@@ -360,6 +368,8 @@ class HRL(BaseAgent):
                     log_prob=self._current_log_prob,
                     values=values,
                     amp_states=amp_states,
+                    timestep=timestep,
+                    timesteps=timesteps,
                 )
 
     def pre_interaction(self, timestep: int, timesteps: int) -> None:
@@ -487,6 +497,8 @@ class HRL(BaseAgent):
                 sampled_values,
                 sampled_returns,
                 sampled_advantages,
+                sampled_timestep,
+                sampled_timesteps,
             ) in sampled_batches:
 
                 with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
