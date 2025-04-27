@@ -99,7 +99,6 @@ class Env(DirectRLEnv):
         self.com_vel_robot1, self.com_vel_robot2 = zeros_3dim.clone(), zeros_3dim.clone()
         self.com_acc_robot1, self.com_acc_robot2 = zeros_3dim.clone(), zeros_3dim.clone()
 
-
         # for relative positions
         if self.cfg.require_relative_pose:
             assert self.motion_loader_2 is not None
@@ -501,6 +500,12 @@ class Env(DirectRLEnv):
         ref_root_state[:, :, 10:13] = ref_root_angular_velocity
         
         # set reference buffer
+        _ = motion_loader.get_all_references(num_samples)
+        for i in _:
+            print(i.shape)
+        print(ref_dof_positions.shape)
+        print(ref_dof_velocities.shape)
+        print(len(self.motion_dof_indexes))
         ref_state_buffer.update({
             "root_state": ref_root_state.squeeze(0),
             "joint_pos": ref_dof_positions[:, :, self.motion_dof_indexes].squeeze(0),

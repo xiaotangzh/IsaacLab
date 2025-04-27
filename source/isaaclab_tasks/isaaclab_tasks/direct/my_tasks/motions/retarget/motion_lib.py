@@ -70,6 +70,14 @@ class MotionLib():
 
     def get_motion_length(self, motion_ids):
         return self._motion_lengths[motion_ids]
+    
+    def load_external_motion(self, motions):
+        self.gts = motions["global_translation"]
+        self.grs = motions["global_rotation"]
+        self.lrs = motions["local_rotation"]
+        self.grvs = motions["global_root_velocity"]
+        self.gravs = motions["global_root_angular_velocity"]
+        self.dvs = motions["dof_vels"]
 
     def get_motion_state(self, start: int=0, end: int | None=None):
         if end is None: end = self.gts.shape[0]
@@ -100,7 +108,6 @@ class MotionLib():
             'body_rotations': rigid_body_rot,
         }
 
-        # return self._motion_fps[0], root_pos, root_rot, root_vel, root_ang_vel, dof_pos, dof_vel, local_rot, rigid_body_pos, rigid_body_rot
         return data
     
     def _load_motions(self, motion_file):
@@ -198,6 +205,22 @@ class MotionLib():
         for f in range(num_frames - 1):
             local_rot0 = motion.local_rotation[f]
             local_rot1 = motion.local_rotation[f + 1]
+            frame_dof_vel = self._local_rotation_to_dof_vel(local_rot0, local_rot1, dt)
+            dof_vels.append(frame_dof_vel)
+
+        dof_vels.append(dof_vels[-1])
+        dof_vels = torch.stack(dof_vels, dim=0)
+
+        return dof_vels
+    
+    def _compute_motion_dof_vels_external(self, motion, fps):
+        num_frames = motion["global_translation"].shape[0]
+        dt = 1.0 / fps
+        dof_vels = []
+
+        for f in range(num_frames - 1):
+            local_rot0 = motion["local_rotation"][f]
+            local_rot1 = motion["local_rotation"][f + 1]
             frame_dof_vel = self._local_rotation_to_dof_vel(local_rot0, local_rot1, dt)
             dof_vels.append(frame_dof_vel)
 

@@ -40,10 +40,8 @@ It then generates a zero rotation pose, and adjusts the pose into a T-Pose.
 """
 def main(skeleton: str = "humanoid28",):
     # import MJCF file
-    if skeleton == "humanoid28":
-        xml_path = "../assets/amp_humanoid.xml"
-    elif skeleton == "SMPL":
-        xml_path = "../assets/smpl_humanoid.xml"
+    if skeleton == "humanoid28": xml_path = "../assets/amp_humanoid.xml"
+    elif skeleton == "SMPL": xml_path = "../assets/smpl_humanoid.xml"
     skeleton = SkeletonTree.from_mjcf(xml_path)
     print(skeleton.node_names, skeleton.num_joints)
 
@@ -64,10 +62,8 @@ def main(skeleton: str = "humanoid28",):
     # translation += torch.tensor([0, 0, 0.9])
 
     # save and visualize T-pose
-    if skeleton == "humanoid28":
-        zero_pose.to_file("tpose/humanoid.npy")
-    elif skeleton == "SMPL":
-        zero_pose.to_file("tpose/smpl.npy")
+    if skeleton == "humanoid28": zero_pose.to_file("tpose/humanoid.npy")
+    elif skeleton == "SMPL": zero_pose.to_file("tpose/smpl.npy")
 
     plot_tpose(zero_pose.global_translation)
 

@@ -124,7 +124,7 @@ def run(in_file: str, SKMotion_out_file = None, person: str = "person1"):
     if SKMotion_out_file:
         target_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=int(fps))
         target_motion.to_file(SKMotion_out_file)
-        return target_motion
+    return target_motion
     
 
 def draw3D(tensor):

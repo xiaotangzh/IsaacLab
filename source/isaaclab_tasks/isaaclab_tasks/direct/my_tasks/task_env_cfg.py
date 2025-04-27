@@ -14,8 +14,8 @@ MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions"
 ### AMP
 @configclass
 class Amp_InterHuman_2Robots(EnvCfg2RobotsSMPL):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
-    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/1_2.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_1.npz")
+    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_2.npz")
 
     reset_strategy = "random_start"
     sync_motion = False
@@ -26,7 +26,7 @@ class Amp_InterHuman_2Robots(EnvCfg2RobotsSMPL):
 
 @configclass
 class Amp_InterHuman(EnvCfg1RobotSMPL):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/26_1.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_1.npz")
 
     reset_strategy = "random"
     sync_motion = False
@@ -45,7 +45,7 @@ class AMP_Humanoid(EnvCfg1RobotHumanoid28):
 ### PPO
 @configclass
 class PPO_InterHuman(EnvCfg1RobotSMPL):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_1.npz")
 
     reward = ["imitation"]
     scene = InteractiveSceneCfg(env_spacing=3.0, replicate_physics=True)
@@ -54,8 +54,8 @@ class PPO_InterHuman(EnvCfg1RobotSMPL):
 
 @configclass
 class PPO_InterHuman_2Robots(EnvCfg2RobotsSMPL):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/1_1.npz")
-    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman/1_2.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_1.npz")
+    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_2.npz")
 
     sync_motion = False
     require_another_pose = True
@@ -83,7 +83,7 @@ class PPO_Humanoid(EnvCfg1RobotHumanoid28):
 ### HRL
 @configclass
 class HRL_InterHuman(EnvCfg1RobotSMPL):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman/6929_1.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/6929_1.npz")
 
     reward = ["com_acc"]
     reset_strategy = "random_start"

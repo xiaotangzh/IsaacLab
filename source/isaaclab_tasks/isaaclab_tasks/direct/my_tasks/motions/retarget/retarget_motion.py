@@ -27,6 +27,8 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 # from isaacgym.torch_utils import *
+from hmac import new
+from shlex import join
 import sys
 import torch
 import json
@@ -50,6 +52,37 @@ Data required for retargeting are stored in a retarget config dictionary as a js
 """
 
 VISUALIZE = True
+
+SMPL_BONE_ORDER_NAMES = [
+    "Pelvis",
+    "L_Hip",
+    "R_Hip",
+    "Torso",
+    "L_Knee",
+    "R_Knee",
+    "Spine",
+    "L_Ankle",
+    "R_Ankle",
+    "Chest",
+    "L_Toe",
+    "R_Toe",
+    "Neck",
+    "L_Thorax",
+    "R_Thorax",
+    "Head",
+    "L_Shoulder",
+    "R_Shoulder",
+    "L_Elbow",
+    "R_Elbow",
+    "L_Wrist",
+    "R_Wrist",
+    "L_Hand",
+    "R_Hand",
+]
+SMPL_MUJOCO_NAMES = ['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
+# SMPL_MUJOCO_NAMES = ['Pelvis', 'Torso', 'Head', 'R_Shoulder', 'R_Elbow', 'R_Hand', 'L_Shoulder', 'L_Elbow', 'L_Hand', 'R_Hip', 'R_Knee', 'R_Ankle', 'L_Hip', 'L_Knee', 'L_Ankle']
+body_names_humanoid28 = ['pelvis', 'torso', 'head', 'right_upper_arm', 'right_lower_arm', 'right_hand', 'left_upper_arm', 'left_lower_arm', 'left_hand', 'right_thigh', 'right_shin', 'right_foot', 'left_thigh', 'left_shin', 'left_foot']
+# body_names_humanoid28 = ['pelvis', 'right_thigh', 'right_shin', 'right_foot', 'left_thigh', 'left_shin', 'left_foot',  'right_upper_arm', 'right_lower_arm', 'right_hand', 'left_upper_arm', 'left_lower_arm', 'left_hand', 'torso', 'head',]
 
 def project_joints(motion):
     right_upper_arm_id = motion.skeleton_tree._node_indices["right_upper_arm"]
@@ -210,6 +243,27 @@ def drop_nodes(motion, dropped_nodes: list):
         return SkeletonMotion.from_skeleton_state(new_sk_state, fps=motion.fps)
     return new_sk_state
 
+def combine_joints(local_rotations: torch.Tensor, root_global_rotation: torch.Tensor, joints_combine: dict, joint_mapping: dict, dropped_nodes: list=[]):
+    rotations_dict = {}
+    for i in range(len(SMPL_MUJOCO_NAMES)):
+        rotations_dict[SMPL_MUJOCO_NAMES[i]] = local_rotations[:, i]
+    for target, sources in joints_combine.items():
+        new_rotation = rotations_dict[sources[0]]
+        for source in sources[1:]:
+            new_rotation = quat_mul(new_rotation, rotations_dict[source])
+        rotations_dict = {k: v for k, v in rotations_dict.items() if (k not in sources or k in target)}
+
+    rotations_dict = {k: v for k, v in rotations_dict.items() if (k not in dropped_nodes)}
+    rotations_dict = {joint_mapping[k]: v for k, v in rotations_dict.items()}
+    print(rotations_dict.keys())
+
+    rotations_dict["pelvis"] = root_global_rotation
+
+    tensors = [rotations_dict[joint_name] for joint_name in body_names_humanoid28]
+    new_rotations = torch.stack(tensors, dim=1)
+    print(new_rotations.shape)
+    return new_rotations
+
 def retarget():
     # load retarget config
     retarget_data_path = "./retarget_interhuman_to_humanoid28.json"
@@ -223,14 +277,13 @@ def retarget():
         # plot_tpose(source_tpose.global_translation)
 
     target_tpose = SkeletonState.from_file(retarget_data["target_tpose"])
-    if VISUALIZE:
-        animate3D(target_tpose.global_translation.unsqueeze(0).repeat(2, 1, 1), q=target_tpose.global_rotation[0].unsqueeze(0).repeat(2, 1, 1), title="target tpose")
-        plot_tpose(target_tpose.global_translation)
+    # if VISUALIZE:
+    #     animate3D(target_tpose.global_translation.unsqueeze(0).repeat(2, 1, 1), q=target_tpose.global_rotation[0].unsqueeze(0).repeat(2, 1, 1), title="target tpose")
+    #     plot_tpose(target_tpose.global_translation)
 
     # load and visualize source motion sequence
     source_motion = SkeletonMotion.from_file(retarget_data["source_motion"])
     if VISUALIZE:
-        print(source_motion.global_rotation.shape)
         animate3D(source_motion.global_translation, q=source_motion.global_rotation[:, 0], title="source motion")
 
     # parse data from retarget config
@@ -239,23 +292,33 @@ def retarget():
 
     # joints combine
     dropped_nodes = ["L_Thorax", "R_Thorax", "L_Wrist", "R_Wrist", "L_Toe", "R_Toe", "Spine", "Chest", "Neck"]
-    source_tpose = drop_nodes(source_tpose, dropped_nodes)
-    source_motion = drop_nodes(source_motion, dropped_nodes)
-    animate3D(source_motion.global_translation, q=source_motion.global_rotation[:, 0], title="after dropping nodes")
-    print(f"After dropping nodes: source motion{source_motion._global_rotation.shape}, source tpose{source_tpose._global_rotation.shape}")
-    _target_motion = source_motion
+    # source_tpose = drop_nodes(source_tpose, dropped_nodes)
+    # source_motion = drop_nodes(source_motion, dropped_nodes)
+    new_rotations = combine_joints(source_motion.local_rotation, source_motion.global_rotation[:, 0], retarget_data["joints_combine"], retarget_data["joint_mapping"], dropped_nodes)
+    _source_motion = SkeletonState.from_rotation_and_root_translation(target_tpose.skeleton_tree, new_rotations, source_motion.root_translation, is_local=True)
+    _source_motion = SkeletonMotion.from_skeleton_state(_source_motion, fps=source_motion.fps)
+    animate3D(_source_motion.global_translation, q=_source_motion.global_rotation[:, 0], title="after dropping nodes")
+    target_motion = _source_motion
+
+    # test: rename joints in source motion
+    # # source_joint_names, target_joint_names = [item for item in SMPL_BONE_ORDER_NAMES if item not in dropped_nodes], [item for item in SMPL_MUJOCO_NAMES if item not in dropped_nodes]
+    # # smpl_2_mujoco = [source_joint_names.index(q) for q in target_joint_names if q in source_joint_names]
+    # local_rotations = source_motion.local_rotation.reshape(-1, len(source_joint_names), 4) #[..., smpl_2_mujoco, :].clone()
+    # _source_motion = SkeletonState.from_rotation_and_root_translation(source_tpose.skeleton_tree, local_rotations, source_motion.root_translation, is_local=True)
+    # _source_motion = SkeletonMotion.from_skeleton_state(_source_motion, fps=source_motion.fps)
+    # _target_motion = _source_motion
+    # animate3D(_source_motion.global_translation, q=_source_motion.global_rotation[:, 0], title="after renaming joints")
 
     # run retargeting
-    target_motion = source_motion.retarget_to_by_tpose(
-      joint_mapping=retarget_data["joint_mapping"],
-      source_tpose=source_tpose,
-      target_tpose=target_tpose,
-      rotation_to_target_skeleton=rotation_to_target_skeleton,
-      scale_to_target_skeleton=retarget_data["scale"],
-      z_up=False
-    )
-    if VISUALIZE:
-        animate3D(target_motion.global_translation, q=target_motion.global_rotation[:, 0], title="retargeted motion")
+    # target_motion = source_motion.retarget_to_by_tpose(
+    #   joint_mapping=retarget_data["joint_mapping"],
+    #   source_tpose=source_tpose,
+    #   target_tpose=target_tpose,
+    #   rotation_to_target_skeleton=rotation_to_target_skeleton,
+    #   scale_to_target_skeleton=retarget_data["scale"]
+    # )
+    # if VISUALIZE:
+    #     animate3D(target_motion.global_translation, q=target_motion.global_rotation[:, 0], title="retargeted motion")
 
     # keep frames between [trim_frame_beg, trim_frame_end - 1]
     frame_beg = retarget_data["trim_frame_beg"]
@@ -289,7 +352,7 @@ def retarget():
     target_motion = SkeletonMotion.from_skeleton_state(new_sk_state, fps=target_motion.fps)
 
     # save retargeted motion
-    _target_motion.to_file(retarget_data["target_motion_path"])
+    target_motion.to_file(retarget_data["target_motion_path"])
 
     # visualize retargeted motion
     if VISUALIZE:

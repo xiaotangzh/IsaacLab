@@ -16,6 +16,9 @@ dof_names_humanoid28 = ['abdomen_x', 'abdomen_y', 'abdomen_z', 'neck_x', 'neck_y
 body_offsets_humanoid28 = [1, 2, 3, 4, 6, 7, 9, 10, 11, 12, 13, 14]
 dof_offsets_humanoid28 = [0, 3, 6, 9, 10, 13, 14, 17, 18, 21, 24, 25, 28]
 
+SMPL_BONE_ORDER_NAMES = ['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'R_Hip', 'R_Knee', 'R_Ankle', 'Torso', 'Head', 'L_Shoulder', 'L_Elbow', 'L_Hand', 'R_Shoulder', 'R_Elbow', 'R_Hand']
+HUMANOID_BONE_ORDER_NAMES = ['Pelvis', 'Torso', 'Head', 'L_Shoulder', 'L_Elbow', 'L_Hand', 'R_Shoulder', 'R_Elbow', 'R_Hand', 'R_Hip', 'R_Knee', 'R_Ankle', 'L_Hip', 'L_Knee', 'L_Ankle']
+
 def get_names(skeleton):
     match skeleton:
         case "humanoid28":
@@ -33,6 +36,17 @@ def SkeletonMotion_to_MotionLoader(path, skeleton: str="humanoid28", visualize=F
         dof_offsets=dof_offsets,
         device=torch.device('cpu')
     )
+
+    #test rename smpl bone order to humanoid28 bone order
+    # smpl_to_humanoid28 = [SMPL_BONE_ORDER_NAMES.index(q) for q in HUMANOID_BONE_ORDER_NAMES if q in SMPL_BONE_ORDER_NAMES]
+    # ext_motions = {}
+    # ext_motions["global_translation"] = SKMotion.global_translation[:, smpl_to_humanoid28]
+    # ext_motions["global_rotation"] = SKMotion.global_rotation[:, smpl_to_humanoid28]
+    # ext_motions["local_rotation"] = SKMotion.local_rotation[:, smpl_to_humanoid28]
+    # ext_motions["global_root_velocity"] = SKMotion.global_root_velocity
+    # ext_motions["global_root_angular_velocity"] = SKMotion.global_root_angular_velocity
+    # ext_motions["dof_vels"] = motion_lib._compute_motion_dof_vels_external(ext_motions, SKMotion.fps)
+    # motion_lib.load_external_motion(ext_motions)
 
     data = motion_lib.get_motion_state()
     data['dof_names'] = dof_names
