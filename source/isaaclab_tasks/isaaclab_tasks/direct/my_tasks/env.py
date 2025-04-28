@@ -162,13 +162,15 @@ class Env(DirectRLEnv):
         self.actions = actions.clone()
 
     def _apply_action(self):
+        # write reference state to robot1 and 2
         if self.cfg.sync_motion == True:
             assert self.robot2 is not None, "robot2 is None, need 2 robots to sync motions"
-            self.write_ref_state(self.robot1, self.ref_state_buffer_1) # write reference state to robot1
-            self.write_ref_state(self.robot2, self.ref_state_buffer_2) # write reference state to robot2
+            self.write_ref_state(self.robot1, self.ref_state_buffer_1) 
+            self.write_ref_state(self.robot2, self.ref_state_buffer_2) 
+        # write reference state to test robot
         elif self.cfg.sync_motion == 2:
             assert self.test_robot is not None, f"test_robot is None with sync_motion == 2"
-            self.write_ref_state(self.test_robot, self.ref_state_buffer_2) # write reference state to test robot
+            self.write_ref_state(self.test_robot, self.ref_state_buffer_2) 
             target = self.action_offset + self.action_scale * self.actions
             self.robot1.set_joint_position_target(target) # apply action to robot1
         else:
@@ -551,8 +553,8 @@ class Env(DirectRLEnv):
         _ = motion_loader.get_all_references(num_samples)
         ref_state_buffer.update({
             "root_state": ref_root_state.squeeze(0),
-            "joint_pos": ref_dof_positions[:, :, self.motion_dof_indexes].squeeze(0),
-            "joint_vel": ref_dof_velocities[:, :, self.motion_dof_indexes].squeeze(0),
+            "dof_pos": ref_dof_positions[:, :, self.motion_dof_indexes].squeeze(0),
+            "dof_vel": ref_dof_velocities[:, :, self.motion_dof_indexes].squeeze(0),
             "body_pos": ref_body_positions[:, :, self.motion_body_indexes].squeeze(0),
             "body_rot": ref_body_rotations[:, :, self.motion_body_indexes].squeeze(0),
         })
@@ -573,8 +575,8 @@ class Env(DirectRLEnv):
         # self.robot.write_root_state_to_sim(self.ref_state_buffer['root_state'][:, self.ref_state_buffer_index], 
         #                                           self.robot._ALL_INDICES)
         
-        robot.write_joint_state_to_sim(ref_state_buffer['joint_pos'][self.episode_length_buf],
-                                       ref_state_buffer['joint_vel'][self.episode_length_buf],
+        robot.write_joint_state_to_sim(ref_state_buffer["dof_pos"][self.episode_length_buf],
+                                       ref_state_buffer["dof_vel"][self.episode_length_buf],
                                        None, robot._ALL_INDICES)
         
     def precompute_relative_body_positions(self, source: MotionLoader, target: MotionLoader) -> torch.Tensor:
@@ -595,6 +597,8 @@ class Env(DirectRLEnv):
         # key bodies
         body_positions_1 = body_positions_1[:, self.key_body_indexes] # [frames or envs, key body num, 3]
         body_positions_2 = body_positions_2[:, self.key_body_indexes] # [frames or envs, key body num, 3]
+
+        # TODO: change to world coordinates
 
         # calculate pairwise distance
         body_positions_1_expand = body_positions_1.unsqueeze(2)  # [frames or envs, body_num, 1, 3]

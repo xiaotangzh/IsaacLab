@@ -476,6 +476,7 @@ class AIP(BaseAgent):
         :type timesteps: int
         """
 
+        #TODO: 封装PPO函数
         def compute_gae(
             rewards: torch.Tensor,
             dones: torch.Tensor,
@@ -549,7 +550,7 @@ class AIP(BaseAgent):
             interaction_reward *= self._discriminator_reward_scale
             interaction_reward = interaction_reward.view(rewards.shape)
 
-        combined_rewards = style_reward + interaction_reward
+        combined_rewards = style_reward + interaction_reward #TODO: weights
 
         # compute returns and advantages
         values = self.memory.get_tensor_by_name("values")
