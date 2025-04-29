@@ -157,6 +157,7 @@ class Env(DirectRLEnv):
         
     ### Pre-physics step
     def _pre_physics_step(self, actions: torch.Tensor):
+        #TODO: auto action clip
         if self.action_clip[0] and self.action_clip[1]:
             actions = torch.clip(actions, min=self.action_clip[0], max=self.action_clip[1]) # clip the actions
         self.actions = actions.clone()
@@ -225,6 +226,7 @@ class Env(DirectRLEnv):
             rewards += self.reward_com_acc()
         
         # check NaN in rewards
+        #TODO: bugs
         nan_envs = check_nan(rewards)
         if torch.any(nan_envs):
             nan_env_ids = torch.nonzero(nan_envs, as_tuple=False).flatten()
@@ -523,6 +525,7 @@ class Env(DirectRLEnv):
         ).flatten()
 
         # update interaction observation buffer after resetting environments
+        #TODO: move joint selection here
         pairwise_joint_distance = self.motion_loader_1.get_pairwise_joint_distance(times=current_times)
         amp_inter_observation = pairwise_joint_distance.reshape(-1, self.amp_inter_observation_size) # [envs, 2 * pjd]
 
@@ -599,7 +602,6 @@ class Env(DirectRLEnv):
         body_positions_2 = body_positions_2[:, self.key_body_indexes] # [frames or envs, key body num, 3]
 
         # TODO: change to world coordinates
-
         # calculate pairwise distance
         body_positions_1_expand = body_positions_1.unsqueeze(2)  # [frames or envs, body_num, 1, 3]
         body_positions_2_expand = body_positions_2.unsqueeze(1)  # [frames or envs, 1, body_num, 3]

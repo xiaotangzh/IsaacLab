@@ -1,3 +1,52 @@
+import torch
+from agents.base_agent import BaseAgent
+from skrl.models.torch import Model
+
+def evaluate(agent: BaseAgent, env, args):
+    agent.set_running_mode("eval")
+    disable_grads(agent)
+    timestep, timesteps = 0, 100000
+    # reset env
+    states, infos = env.reset()
+    while(True):
+        # pre-interaction
+        agent.pre_interaction(timestep=timestep, timesteps=timesteps)
+
+        with torch.no_grad():
+            # compute actions
+            actions = agent.act(states, timestep=timestep, timesteps=100000)[0]
+
+            # step the environments
+            next_states, rewards, terminated, truncated, infos = env.step(actions)
+
+            # render scene
+            if not args.headless:
+                env.render()
+
+            # record the environments' transitions
+            # agent.record_transition(
+            #     states=states,
+            #     actions=actions,
+            #     rewards=rewards,
+            #     next_states=next_states,
+            #     terminated=terminated,
+            #     truncated=truncated,
+            #     infos=infos,
+            #     timestep=timestep,
+            #     timesteps=timesteps,
+            # )
+
+        # post-interaction (update is here)
+        # agent.post_interaction(timestep=timestep, timesteps=timesteps)
+
+        # reset environments
+        states = next_states
+
+def disable_grads(agent: BaseAgent):
+    for k, v in vars(agent).items():
+        if isinstance(v, Model):
+            for p in v.parameters():
+                p.requires_grad = False
 
 def get_algorithm(task: str) -> str:
     if "AMP" in task:

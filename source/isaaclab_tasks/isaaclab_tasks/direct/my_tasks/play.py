@@ -7,8 +7,8 @@ from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.trainers.torch import SequentialTrainer
 from skrl.utils import set_seed
 from skrl.models.torch import Model
+from dataclasses import MISSING
 
-from sympy import true
 import torch
 import argparse
 import os
@@ -31,12 +31,15 @@ parser.add_argument("--wandb", action="store_true", default=False, help="Log tra
 parser.add_argument("--lr", type=float, default=None, help="Learning rate.")
 parser.add_argument("--params", type=int, default=1024, help="Number of parameters for learning.") 
 parser.add_argument("--disable_progressbar", action="store_true", default=False, help="Disable progress bar of tqdm.")
+parser.add_argument("--train", action="store_true", default=False, help="Training mode.")
 parser.add_argument("--eval", action="store_true", default=False, help="Evaluate the models and disable require_grad.")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # load and wrap the Isaac Lab environment
 AppLauncher.add_app_launcher_args(parser)
 args, hydra_args = parser.parse_known_args()
+assert args.train ^ args.eval, "Exactly one of --train or --eval must be specified."
+assert not (args.eval and args.checkpoint is None), "When --eval is set, --checkpoint must not be None."
 experiment_name = f"{args.task} {args.name}" if args.name else f"{args.task} {datetime.datetime.now().strftime('%d_%H-%M')}"
 checkpoint_interval = min(30000, args.steps // 10)
 
@@ -53,16 +56,16 @@ env = gymnasium.make(args.task, cfg=cfg, render_mode="rgb_array" if args.video e
 env = wrap_env(env)
 
 # agent configuration
-from agents.base_agent import BaseAgent
-from agent.amp import AMP, AMP_DEFAULT_CONFIG
-from agent.aip import AIP, AIP_DEFAULT_CONFIG
-from agent.ppo import PPO, PPO_DEFAULT_CONFIG
-from agent.hrl import HRL, HRL_DEFAULT_CONFIG
+from agents.amp import AMP, AMP_DEFAULT_CONFIG
+from agents.aip import AIP, AIP_DEFAULT_CONFIG
+from agents.ppo import PPO, PPO_DEFAULT_CONFIG
+from agents.hrl import HRL, HRL_DEFAULT_CONFIG
 from models.amp import *
 from models.aip import *
 from models.hrl import *
 from models.ppo import *
-agent, agent_cfg = None, None
+agent: BaseAgent = MISSING
+agent_cfg: dict = MISSING
 
 if "AMP" in args.task:
     agent_cfg = AMP_DEFAULT_CONFIG.copy()
@@ -298,15 +301,8 @@ if args.checkpoint:
         print(f"[INFO] Loading model checkpoint from: {resume_path}")
         agent.load(resume_path)
 
-
-# TODO:
-if args.eval: 
-    for k, v in vars(agent).items():
-        if isinstance(v, Model):
-            for p in v.parameters():
-                p.requires_grad = False
-else:
-    trainer.train()
+if args.eval: evaluate(agent, env, args)
+else: trainer.train()
 
 # close the simulator
 env.close()
@@ -315,46 +311,5 @@ env.close()
 simulation_app.close()
 
 
-def play(agent: BaseAgent, env, args):
-    agent.set_running_mode("eval")
-    disable_grads(agent)
-    timestep, timesteps = 0, 100000
-    while(true):
-        # pre-interaction
-        agent.pre_interaction(timestep=timestep, timesteps=timesteps)
 
-        with torch.no_grad():
-            # compute actions
-            actions = agent.act(states, timestep=timestep, timesteps=100000)[0]
 
-            # step the environments
-            next_states, rewards, terminated, truncated, infos = env.step(actions)
-
-            # render scene
-            if not args.sheadless:
-                env.render()
-
-            # record the environments' transitions
-            # agent.record_transition(
-            #     states=states,
-            #     actions=actions,
-            #     rewards=rewards,
-            #     next_states=next_states,
-            #     terminated=terminated,
-            #     truncated=truncated,
-            #     infos=infos,
-            #     timestep=timestep,
-            #     timesteps=timesteps,
-            # )
-
-        # post-interaction (update is here)
-        # agent.post_interaction(timestep=timestep, timesteps=timesteps)
-
-        # reset environments
-        states = next_states
-
-def disable_grads(agent: BaseAgent):
-    for k, v in vars(agent).items():
-        if isinstance(v, Model):
-            for p in v.parameters():
-                p.requires_grad = False

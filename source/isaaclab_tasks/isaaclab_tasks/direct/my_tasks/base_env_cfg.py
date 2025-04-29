@@ -76,7 +76,7 @@ class BaseEnvCfg(DirectRLEnvCfg):
 
     # scene
     terrain: str = "default"
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(env_spacing=7.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
     terrain_cfg = TerrainImporterCfg(
         prim_path="/World/ground",
         terrain_type="generator",
@@ -89,11 +89,6 @@ class BaseEnvCfg(DirectRLEnvCfg):
             static_friction=1.0,
             dynamic_friction=1.0,
         ),
-        # visual_material=sim_utils.MdlFileCfg(
-        #     mdl_path=f"{ISAACLAB_NUCLEUS_DIR}/Materials/TilesMarbleSpiderWhiteBrickBondHoned/TilesMarbleSpiderWhiteBrickBondHoned.mdl",
-        #     project_uvw=True,
-        #     texture_scale=(0.25, 0.25),
-        # ),
         visual_material=PreviewSurfaceCfg(diffuse_color=(0.0, 0.0, 0.0)),
         debug_vis=False,
     )

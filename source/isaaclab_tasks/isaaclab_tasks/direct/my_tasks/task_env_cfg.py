@@ -27,21 +27,23 @@ class AMP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
 @configclass
 class AMP_InterHuman(EnvCfg1RobotSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_1.npz")
-
     reset_strategy = "random"
     sync_motion = True
-
-    scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
 
 @configclass
 class AMP_Humanoid(EnvCfg1RobotHumanoid28):
     motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_walk.npz")
-
     reset_strategy = "random_start"
     sync_motion = False
     # terrain = "rough"
 
-    scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
+@configclass
+class AMP_Humanoid_rough_walk(AMP_Humanoid):
+    motion_file_1 = os.path.join(MOTIONS_DIR, "humanoid28/humanoid_walk.npz")
+    reset_strategy = "random_start"
+    sync_motion = False
+    terrain = "rough"
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(env_spacing=2.5, replicate_physics=True)
 
 ### AIP
 @configclass
@@ -62,8 +64,7 @@ class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     amp_inter_observation_space =  (key_body_num * key_body_num) # key bodies
     pairwise_joint_distance = True
     key_body_names = ["L_Hand", "R_Hand", "L_Toe", "R_Toe", "Head" , "L_Shoulder", "R_Shoulder", "L_Hip", "R_Hip", "Torso"]
-    scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
-    # action_clip = [None, None] 
+    action_clip = [-0.1, 0.1] 
     reward = ["imitation"]
 
 ### PPO
@@ -72,7 +73,6 @@ class PPO_InterHuman(EnvCfg1RobotSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_1.npz")
 
     reward = ["imitation"]
-    scene = InteractiveSceneCfg(env_spacing=3.0, replicate_physics=True)
     reset_strategy = "default"
     sync_motion = True
 
@@ -85,7 +85,6 @@ class PPO_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     require_another_pose = True
     observation_space = 2 * 151 * 2
     amp_observation_space =  2 * 151
-    scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
     reward = ["imitation"]
     reset_strategy = "random_start"
 
@@ -100,8 +99,6 @@ class PPO_Humanoid(EnvCfg1RobotHumanoid28):
     # terrain = "rough"
     # init_root_height = 2.0
     episode_length_s = 30.0
-
-    scene = InteractiveSceneCfg(env_spacing=5.0, replicate_physics=True)
 
 
 ### HRL
@@ -126,4 +123,3 @@ class HRL_Humanoid(EnvCfg1RobotHumanoid28):
     # init_root_height = 0.15
 
     # sync_motion = True
-    scene = InteractiveSceneCfg(env_spacing=2.5, replicate_physics=True)
