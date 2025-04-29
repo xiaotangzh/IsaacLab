@@ -1,3 +1,6 @@
+from code import interact
+from operator import is_
+import sys
 from typing import Any, Callable, Mapping, Optional, Tuple, Union
 
 import copy
@@ -11,11 +14,14 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from skrl import config, logger
+
+from isaaclab_tasks.direct.my_tasks.utils.utils import check_any_nan
 from .base_agent import BaseAgent
 from skrl.memories.torch import Memory
 from skrl.models.torch import Model
 from skrl.resources.schedulers.torch import KLAdaptiveLR
 from skrl.resources.preprocessors.torch import RunningStandardScaler
+from isaaclab_tasks.direct.my_tasks.utils import *
 
 # fmt: off
 # [start-config-dict-torch]
@@ -286,6 +292,7 @@ class AIP(BaseAgent):
             self.memory.create_tensor(name="amp_states", size=self.amp_observation_space, dtype=torch.float32)
             self.memory.create_tensor(name="amp_inter_states", size=self.amp_inter_observation_space, dtype=torch.float32)
             self.memory.create_tensor(name="next_values", size=1, dtype=torch.float32)
+            self.memory.create_tensor(name="interaction_reward_weights", size=1, dtype=torch.float32)
 
         self.tensors_names = [
             "states",
@@ -300,6 +307,7 @@ class AIP(BaseAgent):
             "amp_states",
             "amp_inter_states",
             "next_values",
+            "interaction_reward_weights"
         ]
 
         # create tensors for motion dataset and reply buffer
@@ -388,6 +396,7 @@ class AIP(BaseAgent):
         if self.memory is not None:
             amp_states = infos["amp_obs"]
             amp_inter_states = infos["amp_interaction_obs"]
+            interaction_reward_weights = infos["interaction_reward_weights"]
 
             # reward shaping
             if self._rewards_shaper is not None:
@@ -423,6 +432,7 @@ class AIP(BaseAgent):
                 amp_states=amp_states,
                 amp_inter_states=amp_inter_states,
                 next_values=next_values,
+                interaction_reward_weights=interaction_reward_weights,
             )
             for memory in self.secondary_memories:
                 memory.add_samples(
@@ -437,6 +447,7 @@ class AIP(BaseAgent):
                     amp_states=amp_states,
                     amp_inter_states=amp_inter_states,
                     next_values=next_values,
+                    interaction_reward_weights=interaction_reward_weights,
                 )
 
     def pre_interaction(self, timestep: int, timesteps: int) -> None:
@@ -530,6 +541,7 @@ class AIP(BaseAgent):
         rewards = self.memory.get_tensor_by_name("rewards")
         amp_states = self.memory.get_tensor_by_name("amp_states")
         amp_inter_states = self.memory.get_tensor_by_name("amp_inter_states")
+        interaction_reward_weights = self.memory.get_tensor_by_name("interaction_reward_weights")
 
         with torch.no_grad(), torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
             amp_logits, _, _ = self.discriminator.act(
@@ -550,7 +562,7 @@ class AIP(BaseAgent):
             interaction_reward *= self._discriminator_reward_scale
             interaction_reward = interaction_reward.view(rewards.shape)
 
-        combined_rewards = style_reward + interaction_reward #TODO: weights
+        combined_rewards = style_reward + interaction_reward * interaction_reward_weights
 
         # compute returns and advantages
         values = self.memory.get_tensor_by_name("values")
@@ -615,6 +627,7 @@ class AIP(BaseAgent):
                 sampled_amp_states,
                 sampled_amp_inter_states,
                 _,
+                interaction_reward_weights
             ) in enumerate(sampled_batches):
 
                 with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
@@ -706,7 +719,7 @@ class AIP(BaseAgent):
                     inter_discriminator_loss = 0.5 * (
                         nn.BCEWithLogitsLoss()(amp_cat_inter_logits, torch.zeros_like(amp_cat_inter_logits))
                         + torch.nn.BCEWithLogitsLoss()(amp_motion_inter_logits, torch.ones_like(amp_motion_inter_logits))
-                    )
+                    ) #* interaction_reward_weights.mean() #TODO: double check weights
 
                     # discriminator logit regularization
                     if self._discriminator_logit_regularization_scale:

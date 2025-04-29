@@ -45,14 +45,14 @@ class BaseEnvCfg(DirectRLEnvCfg):
     reward: list = ["zero"]
     
     # motions
-    action_clip: list = MISSING
+    action_clip: list | None = None # [clip_start, clip_end, annealing_steps]
     init_root_height: float = 0.15
     early_termination: bool = True
     key_body_names: list = MISSING
     termination_bodies: list = MISSING
     termination_heights: list = MISSING
     reference_body: str = MISSING
-    sync_motion: int | bool = False # apply reference actions instead of predicted actions to robots
+    sync_motion: int | bool | str = False # apply reference actions instead of predicted actions to robots
     reset_strategy: str = "default"  # default, random, random-start (time zero from dataset)
 
     # two-character config
@@ -95,6 +95,11 @@ class BaseEnvCfg(DirectRLEnvCfg):
 
     # robot
     robot_format: str = MISSING
+    robot1: None | ArticulationCfg = MISSING
+    robot2: None | ArticulationCfg = MISSING
+    test_robot: None | ArticulationCfg = None
+    motion_file_1: str = MISSING
+    motion_file_2: str = MISSING
 
     # Create the markers configuration
     marker_green_cfg = VisualizationMarkersCfg(
@@ -135,21 +140,18 @@ class BaseEnvCfg(DirectRLEnvCfg):
     )
 
 class EnvCfg1Robot(BaseEnvCfg):
-    robot1: ArticulationCfg = MISSING
-    motion_file_1: str = MISSING
+    robot2 = None
+    motion_file_2 = None
 
 class EnvCfg2Robots(BaseEnvCfg):
-    robot1: None | ArticulationCfg = MISSING
-    robot2: None | ArticulationCfg = MISSING
-    motion_file_1: str = MISSING
-    motion_file_2: str = MISSING
+    pass
 
 class EnvCfg1RobotSMPL(EnvCfg1Robot):
     robot_format = "SMPL"
-    robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
+    robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/robot1")
 
     init_root_height = 0.25
-    action_clip = [-0.06, 0.06]
+    action_clip = [0.05, 0.1, 30000]
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
     observation_space = 151 
@@ -160,11 +162,11 @@ class EnvCfg1RobotSMPL(EnvCfg1Robot):
 
 class EnvCfg2RobotsSMPL(EnvCfg2Robots):
     robot_format = "SMPL"
-    robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot1")
-    robot2: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/Robot2")
+    robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/robot1")
+    robot2: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/robot2")
 
     init_root_height = 0.25
-    action_clip = [-0.06, 0.06]
+    action_clip = [0.05, 0.1, 30000]
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
     observation_space = 151 * 2
@@ -175,7 +177,7 @@ class EnvCfg2RobotsSMPL(EnvCfg2Robots):
 
 class EnvCfg1RobotHumanoid28(EnvCfg1Robot):
     robot_format = "humanoid"
-    robot1 = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot1").replace(
+    robot1 = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/robot1").replace(
         actuators={
             "body": ImplicitActuatorCfg(
                 joint_names_expr=[".*"],
@@ -186,7 +188,7 @@ class EnvCfg1RobotHumanoid28(EnvCfg1Robot):
         },
     )
 
-    action_clip = [None, None]
+    action_clip = None
     termination_bodies = ["torso", "head"]
     termination_heights = [0.4, 0.7]
     observation_space = 69
@@ -197,7 +199,7 @@ class EnvCfg1RobotHumanoid28(EnvCfg1Robot):
 
 class EnvCfg2RobotHumanoid28(EnvCfg2Robots):
     robot_format = "humanoid"
-    robot1 = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot1").replace(
+    robot1 = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/robot1").replace(
         actuators={
             "body": ImplicitActuatorCfg(
                 joint_names_expr=[".*"],
@@ -208,7 +210,7 @@ class EnvCfg2RobotHumanoid28(EnvCfg2Robots):
         },
     )
 
-    robot2 = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/Robot2").replace(
+    robot2 = HUMANOID_28_CFG.replace(prim_path="/World/envs/env_.*/robot2").replace(
         actuators={
             "body": ImplicitActuatorCfg(
                 joint_names_expr=[".*"],
