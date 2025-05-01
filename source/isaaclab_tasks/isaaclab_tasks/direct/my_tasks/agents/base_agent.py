@@ -90,6 +90,7 @@ class BaseAgent:
                 datetime.datetime.now().strftime("%y-%m-%d_%H-%M-%S-%f"), self.__class__.__name__
             )
         self.experiment_dir = os.path.join(directory, experiment_name)
+        self.min_envs_to_save = 100 # minimum number of environments to log data and save checkpoints
 
     def __str__(self) -> str:
         """Generate a representation of the agent as string
@@ -170,12 +171,12 @@ class BaseAgent:
         # main entry to log data for consumption and visualization by TensorBoard
         if self.write_interval == "auto":
             self.write_interval = int(trainer_cfg.get("timesteps", 0) / 100)
-        if self.write_interval > 0:
+        if self.write_interval > 0 and self.memory.num_envs > self.min_envs_to_save:
             self.writer = SummaryWriter(log_dir=self.experiment_dir)
 
         if self.checkpoint_interval == "auto":
             self.checkpoint_interval = int(trainer_cfg.get("timesteps", 0) / 10)
-        if self.checkpoint_interval > 0 and self.memory.num_envs > 100:
+        if self.checkpoint_interval > 0 and self.memory.num_envs > self.min_envs_to_save:
             os.makedirs(os.path.join(self.experiment_dir, "checkpoints"), exist_ok=True)
 
     def track_data(self, tag: str, value: float) -> None:

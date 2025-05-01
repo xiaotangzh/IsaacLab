@@ -18,17 +18,14 @@ class AMP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_2.npz")
 
     reset_strategy = "random_start"
-    sync_motion = False
-
-    # require_another_pose = True
-    observation_space = 2 * 151 
-    amp_observation_space =  2 * 151
+    sync_motion = True
 
 @configclass
 class AMP_InterHuman(EnvCfg1RobotSMPL):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_1.npz")
-    reset_strategy = "random"
-    sync_motion = True
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_1.npz")
+    reset_strategy = "random_start"
+    sync_motion = False
+    reward = ["energy_penalty"]
 
 @configclass
 class AMP_Humanoid(EnvCfg1RobotHumanoid28):
@@ -49,8 +46,8 @@ class AMP_Humanoid_rough_walk(AMP_Humanoid):
 @configclass
 class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     # sync motion to test_robot
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_1.npz")
-    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_2.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_1.npz")
+    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_2.npz")
 
     robot2 = None
     test_robot: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/test_robot")
@@ -58,14 +55,15 @@ class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     reset_strategy = "random_start"
     sync_motion = "test_robot"
 
-    key_body_num = 10
-    observation_space = 151 + (key_body_num * key_body_num)
+    key_body_num = 5
+    interaction_space = key_body_num * key_body_num * 3 + 23 * 3 # relative body positions + dof_velocity
+    observation_space = 151 + interaction_space
     action_space = 69
     amp_observation_space =  151
-    amp_inter_observation_space =  (key_body_num * key_body_num) # key bodies
+    amp_inter_observation_space = interaction_space 
     pairwise_joint_distance = True
-    key_body_names = ["L_Hand", "R_Hand", "L_Toe", "R_Toe", "Head" , "L_Shoulder", "R_Shoulder", "L_Hip", "R_Hip", "Torso"]
-    reward = ["imitation"]
+    key_body_names = ["L_Hand", "R_Hand", "Head", "L_Shoulder", "R_Shoulder"]
+    # reward = ["energy_penalty"]
 
 ### PPO
 @configclass

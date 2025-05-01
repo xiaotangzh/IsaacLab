@@ -5,6 +5,7 @@ from skrl.envs.wrappers.torch import wrap_env
 from skrl.memories.torch import RandomMemory
 from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.trainers.torch import SequentialTrainer
+from skrl.resources.schedulers.torch import KLAdaptiveLR
 from skrl.utils import set_seed
 from skrl.models.torch import Model
 from dataclasses import MISSING
@@ -72,7 +73,8 @@ if "AMP" in args.task:
     agent_cfg["state_preprocessor_kwargs"] = {"size": env.observation_space}
     agent_cfg["value_preprocessor_kwargs"] = {"size": 1}
     agent_cfg["amp_state_preprocessor_kwargs"] = {"size": env.amp_observation_size}
-    agent_cfg["task_reward_weight"] = 0.0
+    agent_cfg["task_reward_weight"] = 1.0
+    agent_cfg["learning_rate_scheduler"] = KLAdaptiveLR
     
     # memory configuration
     rollout_memory = RandomMemory(
@@ -124,7 +126,8 @@ if "AIP" in args.task:
     agent_cfg["value_preprocessor_kwargs"] = {"size": 1}
     agent_cfg["amp_state_preprocessor_kwargs"] = {"size": env.amp_observation_size}
     agent_cfg["amp_inter_state_preprocessor_kwargs"] = {"size": env.amp_inter_observation_size}
-    agent_cfg["task_reward_weight"] = 0.0
+    agent_cfg["task_reward_weight"] = 1.0
+    agent_cfg["learning_rate_scheduler"] = KLAdaptiveLR
     
     # memory configuration
     rollout_memory = RandomMemory(

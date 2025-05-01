@@ -62,7 +62,6 @@ class MotionLoader:
     
     @abstractmethod
     def sample(self, num_samples: int, duration: float | None = None, high: float | None = None) -> np.ndarray:
-        pass
         """Sample motion data.
 
         Args:
@@ -78,10 +77,11 @@ class MotionLoader:
             body positions (with shape (N, num_bodies, 3)), body rotations (with shape (N, num_bodies, 4), as wxyz quaternion),
             body linear velocities (with shape (N, num_bodies, 3)) and body angular velocities (with shape (N, num_bodies, 3)).
         """
+        raise NotImplementedError("sample() is not implemented.")
 
     @abstractmethod
     def get_all_references(self, num_samples: int = 1):
-        pass
+        raise NotImplementedError("get_all_references() is not implemented.")
 
     def _interpolate(
         self,

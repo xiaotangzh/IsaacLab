@@ -45,7 +45,7 @@ class BaseEnvCfg(DirectRLEnvCfg):
     reward: list = ["zero"]
     
     # motions
-    action_clip: list | None = None # [clip_start, clip_end, annealing_steps]
+    action_clip: list | float | None = None # [clip_start, clip_end, annealing_steps]
     init_root_height: float = 0.15
     early_termination: bool = True
     key_body_names: list = MISSING
@@ -151,7 +151,7 @@ class EnvCfg1RobotSMPL(EnvCfg1Robot):
     robot1: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/robot1")
 
     init_root_height = 0.25
-    action_clip = [0.05, 0.1, 30000]
+    action_clip = 0.05
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
     observation_space = 151 
@@ -166,7 +166,7 @@ class EnvCfg2RobotsSMPL(EnvCfg2Robots):
     robot2: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/robot2")
 
     init_root_height = 0.25
-    action_clip = [0.05, 0.1, 30000]
+    action_clip = 0.05
     termination_bodies = ["Pelvis", "Head"]
     termination_heights = [0.5, 0.8]
     observation_space = 151 * 2
@@ -220,7 +220,7 @@ class EnvCfg2RobotHumanoid28(EnvCfg2Robots):
             ),
         },
     )
-    action_clip = [None, None]
+    action_clip = None
     termination_bodies = ["torso", "head"]
     termination_heights = [0.4, 0.7]
     observation_space = 69 * 2
