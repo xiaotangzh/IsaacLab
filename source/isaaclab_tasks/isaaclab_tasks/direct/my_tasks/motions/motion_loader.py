@@ -37,8 +37,8 @@ class MotionLoader:
         print(f"Motion loaded ({motion_file}): duration: {self.duration} sec, frames: {self.num_frames}")
 
         # two characters properties
-        self.relative_pose: torch.Tensor | None = None # [frames, body_num, 3]
         self.pairwise_joint_distance: torch.Tensor | None = None # [frames, body_num * body_num, 3]
+        self.interaction_reward_weights: torch.Tensor | None = None # [frames, 1]
 
     @property
     def dof_names(self) -> list[str]:
@@ -217,15 +217,6 @@ class MotionLoader:
         duration = (duration - 1) if (self.duration - duration * upper_bound) < 1 else duration
         return duration * np.random.uniform(low=0.0, high=1.0, size=num_samples)
 
-    # time computing is not correct
-    # def get_relative_pose(self, times: np.ndarray | None=None, frame: torch.Tensor | None=None) -> torch.Tensor: # frame=(num_envs,)
-    #     assert self.relative_pose is not None
-    #     if frame is not None:
-    #         return self.relative_pose[frame]
-    #     else: 
-    #         frame0, frame1 = self._get_frame_index_from_time(times)
-    #         return torch.cat([self.relative_pose[frame0], self.relative_pose[frame1]], dim=0)
-    
     def get_pairwise_joint_distance(self, times: np.ndarray | None=None, frame: torch.Tensor | None=None) -> torch.Tensor: # frame=(num_envs,)
         assert self.pairwise_joint_distance is not None
         if frame is not None:
@@ -285,7 +276,6 @@ if __name__ == "__main__":
     print("- names of bodies:", motion.body_names)
     print("- names of DOFs:", motion.dof_names)
 
-    
 class MotionLoaderSMPL(MotionLoader):
     def __init__(self, motion_file: str, device: torch.device) -> None:
         super().__init__(motion_file, device)
@@ -295,11 +285,11 @@ class MotionLoaderSMPL(MotionLoader):
         self.dof_velocities = torch.tensor(data["dof_velocities"], dtype=torch.float32, device=self.device)
         self.body_positions = torch.tensor(data["body_positions"], dtype=torch.float32, device=self.device)
         self.body_rotations = torch.tensor(data["body_rotations"], dtype=torch.float32, device=self.device)
-        self.root_linear_velocity = torch.tensor(
-            data["root_linear_velocity"], dtype=torch.float32, device=self.device
+        self.body_linear_velocities = torch.tensor(
+            data["body_linear_velocities"], dtype=torch.float32, device=self.device
         )
-        self.root_angular_velocity = torch.tensor(
-            data["root_angular_velocity"], dtype=torch.float32, device=self.device
+        self.body_angular_velocities = torch.tensor(
+            data["body_angular_velocities"], dtype=torch.float32, device=self.device
         )
 
         self.num_frames = self.dof_positions.shape[0]
@@ -318,8 +308,8 @@ class MotionLoaderSMPL(MotionLoader):
             self._interpolate(self.dof_velocities, blend=blend, start=index_0, end=index_1),
             self._interpolate(self.body_positions, blend=blend, start=index_0, end=index_1),
             self._slerp(self.body_rotations, blend=blend, start=index_0, end=index_1),
-            self._interpolate(self.root_linear_velocity, blend=blend, start=index_0, end=index_1),
-            self._interpolate(self.root_angular_velocity, blend=blend, start=index_0, end=index_1),
+            self._interpolate(self.body_linear_velocities, blend=blend, start=index_0, end=index_1),
+            self._interpolate(self.body_angular_velocities, blend=blend, start=index_0, end=index_1),
         )
     
     def get_all_references(self, num_samples: int = 1):
@@ -327,8 +317,8 @@ class MotionLoaderSMPL(MotionLoader):
                 self.dof_velocities.clone().unsqueeze(0).expand(num_samples, -1, -1),
                 self.body_positions.clone().unsqueeze(0).expand(num_samples, -1, -1, -1),
                 self.body_rotations.clone().unsqueeze(0).expand(num_samples, -1, -1, -1),
-                self.root_linear_velocity.clone().unsqueeze(0).expand(num_samples, -1, -1),
-                self.root_angular_velocity.clone().unsqueeze(0).expand(num_samples, -1, -1))
+                self.body_linear_velocities.clone().unsqueeze(0).expand(num_samples, -1, -1, -1),
+                self.body_angular_velocities.clone().unsqueeze(0).expand(num_samples, -1, -1, -1))
     
 
 class MotionLoaderHumanoid28(MotionLoader):
@@ -340,22 +330,12 @@ class MotionLoaderHumanoid28(MotionLoader):
         self.dof_velocities = torch.tensor(data["dof_velocities"], dtype=torch.float32, device=self.device)
         self.body_positions = torch.tensor(data["body_positions"], dtype=torch.float32, device=self.device)
         self.body_rotations = torch.tensor(data["body_rotations"], dtype=torch.float32, device=self.device)
-        try:
-            self.body_linear_velocities = torch.tensor(
-                data["body_linear_velocities"], dtype=torch.float32, device=self.device
-            )
-            self.body_angular_velocities = torch.tensor(
-                data["body_angular_velocities"], dtype=torch.float32, device=self.device
-            )
-            self.root_linear_velocity = self.body_linear_velocities[:,0]
-            self.root_angular_velocity = self.body_angular_velocities[:,0]
-        except: # retargeted InterHuman data has no body velocities
-            self.root_linear_velocity = torch.tensor(
-                data["root_linear_velocity"], dtype=torch.float32, device=self.device
-            )
-            self.root_angular_velocity = torch.tensor(
-                data["root_angular_velocity"], dtype=torch.float32, device=self.device
-            )
+        self.body_linear_velocities = torch.tensor(
+            data["body_linear_velocities"], dtype=torch.float32, device=self.device
+        )
+        self.body_angular_velocities = torch.tensor(
+            data["body_angular_velocities"], dtype=torch.float32, device=self.device
+        )
 
         self.num_frames = self.dof_positions.shape[0]
         self.duration = self.dt * (self.num_frames - 1)
@@ -373,8 +353,8 @@ class MotionLoaderHumanoid28(MotionLoader):
             self._interpolate(self.dof_velocities, blend=blend, start=index_0, end=index_1),
             self._interpolate(self.body_positions, blend=blend, start=index_0, end=index_1),
             self._slerp(self.body_rotations, blend=blend, start=index_0, end=index_1),
-            self._interpolate(self.root_linear_velocity, blend=blend, start=index_0, end=index_1),
-            self._interpolate(self.root_angular_velocity, blend=blend, start=index_0, end=index_1),
+            self._interpolate(self.body_linear_velocities, blend=blend, start=index_0, end=index_1),
+            self._interpolate(self.body_angular_velocities, blend=blend, start=index_0, end=index_1),
         )
 
     def get_all_references(self, num_samples: int = 1):
@@ -382,5 +362,5 @@ class MotionLoaderHumanoid28(MotionLoader):
                 self.dof_velocities.clone().unsqueeze(0).expand(num_samples, -1, -1),
                 self.body_positions.clone().unsqueeze(0).expand(num_samples, -1, -1, -1),
                 self.body_rotations.clone().unsqueeze(0).expand(num_samples, -1, -1, -1),
-                self.root_linear_velocity.clone().unsqueeze(0).expand(num_samples, -1, -1),
-                self.root_angular_velocity.clone().unsqueeze(0).expand(num_samples, -1, -1))
+                self.body_linear_velocities.clone().unsqueeze(0).expand(num_samples, -1, -1, -1),
+                self.body_angular_velocities.clone().unsqueeze(0).expand(num_samples, -1, -1, -1))

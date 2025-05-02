@@ -1,8 +1,10 @@
+from ast import List
 import re
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
 from skrl.models.torch import Model
+from skrl.resources.schedulers.torch import KLAdaptiveLR
 from typing import Union, TYPE_CHECKING
 if TYPE_CHECKING:
     from isaaclab_tasks.direct.my_tasks.agents.base_agent import BaseAgent  # avoid circular import error
@@ -182,3 +184,65 @@ def compute_kl(
         ratio = next_log_prob - sampled_log_prob
         kl_divergence = ((torch.exp(ratio) - 1) - ratio).mean()
     return kl_divergence
+
+def compute_discriminator_reward(
+    agent: "BaseAgent",
+    discriminator: "Model",
+    amp_state_preprocessor,
+    amp_states: torch.Tensor,
+    shape
+) -> torch.Tensor:
+    amp_logits, _, _ = discriminator.act(
+        {"states": amp_state_preprocessor(amp_states)}, role="discriminator"
+    )
+    style_reward = -torch.log(
+        torch.maximum(1 - 1 / (1 + torch.exp(-amp_logits)), torch.tensor(0.0001, device=agent.device))
+    )
+    style_reward *= agent._discriminator_reward_scale
+    style_reward = style_reward.view(shape)
+    return style_reward
+
+def sample_mini_batches(
+    agent: "BaseAgent",
+    tensors_names
+) -> list:
+    sampled_batches = agent.memory.sample_all(names=tensors_names, mini_batches=agent._mini_batches)
+    return sampled_batches
+
+def sample_mini_batches_for_discriminator(
+    agent: "BaseAgent",
+    tensors_names,
+    motion_dataset,
+    reply_buffer,
+    sampled_batches,
+    replay_tensor_name,
+) -> tuple[list, list]:
+    sampled_motion_batches = motion_dataset.sample(
+        names=["states"], batch_size=agent.memory.memory_size * agent.memory.num_envs, mini_batches=agent._mini_batches
+    )
+    if len(reply_buffer):
+        sampled_replay_batches = reply_buffer.sample(
+            names=["states"],
+            batch_size=agent.memory.memory_size * agent.memory.num_envs,
+            mini_batches=agent._mini_batches,
+        )
+    else:
+        sampled_replay_batches = [[batches[tensors_names.index(replay_tensor_name)]] for batches in sampled_batches]
+    
+    return sampled_motion_batches, sampled_replay_batches
+
+def update_learning_rate(
+    agent: "BaseAgent",
+    scheduler,
+    kl_divergences,
+    config,
+):
+    if isinstance(scheduler, KLAdaptiveLR):
+        kl = torch.tensor(kl_divergences, device=agent.device).mean()
+        # reduce (collect from all workers/processes) KL in distributed runs
+        if config.torch.is_distributed:
+            torch.distributed.all_reduce(kl, op=torch.distributed.ReduceOp.SUM)
+            kl /= config.torch.world_size
+        scheduler.step(kl.item())
+    else:
+        scheduler.step()

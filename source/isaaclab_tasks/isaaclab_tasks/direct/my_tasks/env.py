@@ -1,32 +1,30 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
 
+# basic imports
 from __future__ import annotations
-
-import gymnasium as gym
 from matplotlib.pyplot import isinteractive
 import numpy as np
 import torch
-from isaaclab.envs.mdp.observations import projected_gravity
-import isaaclab.sim as sim_utils
+import sys
+import random
+import math
+
+# isaac imports
+import gymnasium as gym
 from isaaclab.assets import Articulation
 from isaaclab.envs import DirectRLEnv
 from isaaclab.sim.spawners.from_files import GroundPlaneCfg, spawn_ground_plane
+import isaaclab.sim as sim_utils
+
+# task imports
 from isaaclab_tasks.direct.my_tasks.utils.env_utils import *
 from isaaclab_tasks.direct.my_tasks.utils.utils import *
 from isaaclab_tasks.direct.my_tasks.utils.rewards import *
 from isaaclab_tasks.direct.my_tasks.utils.reward_utils import *
 from isaaclab_tasks.direct.my_tasks.task_env_cfg import BaseEnvCfg
 from isaaclab_tasks.direct.my_tasks.motions.motion_loader import MotionLoader, MotionLoaderHumanoid28, MotionLoaderSMPL
-import sys
-import random
-import math
 
 # marker
 from isaaclab.markers import VisualizationMarkersCfg, VisualizationMarkers
-import isaaclab.sim as sim_utils
 
 # terrain
 from isaaclab.terrains import TerrainImporter
@@ -51,8 +49,7 @@ class Env(DirectRLEnv):
         self.motion_loader_1 = MotionLoader(motion_file=self.cfg.motion_file_1, device=self.device)
         self.motion_loader_2 = MotionLoader(motion_file=self.cfg.motion_file_2, device=self.device) if self.cfg.motion_file_2 is not None else None 
         self.sample_times = None # synchronize sampling times for two robots
-        if self.cfg.episode_length_s < 0 or self.cfg.episode_length_s > self.motion_loader_1.duration:
-            self.cfg.episode_length_s = self.motion_loader_1.duration
+        if self.cfg.episode_length_s <= 0: self.cfg.episode_length_s = self.motion_loader_1.duration
 
         # DOF and key body indexes
         key_body_names = self.cfg.key_body_names
@@ -100,24 +97,17 @@ class Env(DirectRLEnv):
         self.com_vel_robot1, self.com_vel_robot2 = zeros_3dim.clone(), zeros_3dim.clone()
         self.com_acc_robot1, self.com_acc_robot2 = zeros_3dim.clone(), zeros_3dim.clone()
 
-        # for relative positions
-        if self.cfg.require_relative_pose:
-            assert self.motion_loader_2 is not None
-            self.motion_loader_1.relative_pose = precompute_relative_body_positions(self, source=self.motion_loader_2, target=self.motion_loader_1)
-            self.motion_loader_2.relative_pose = precompute_relative_body_positions(self, source=self.motion_loader_1, target=self.motion_loader_2)
-
-        # pairwise joint distance
+        # interaction
         if self.cfg.pairwise_joint_distance:
             assert self.motion_loader_2 is not None
-            pairwise_joint_distance = compute_pairwise_joint_distance(self, self.motion_loader_1, self.motion_loader_2)
-            self.motion_loader_1.pairwise_joint_distance = pairwise_joint_distance
+            self.pjd_cfg = {"sqrt": False, "upper_bound": 1.5, "func": "max"}
+            self.motion_loader_1.pairwise_joint_distance = compute_pairwise_joint_distance(self, self.motion_loader_1, self.motion_loader_2, compute_weight=True)
 
             self.amp_inter_observation_size = self.cfg.num_amp_observations * self.cfg.amp_inter_observation_space
             self.amp_inter_observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.amp_inter_observation_size,))
             self.amp_inter_observation_buffer = torch.zeros(
                 (self.num_envs, self.cfg.num_amp_observations, self.cfg.amp_inter_observation_space), device=self.device
             )
-            self.pjd_cfg = {"sqrt": False, "upper_bound": 0.75, "func": "max"}
             
     def _setup_scene(self):
         # add robots
@@ -376,13 +366,10 @@ class Env(DirectRLEnv):
             self.extras["amp_interaction_obs"] = self.amp_inter_observation_buffer.view(-1, self.amp_inter_observation_size)
 
             # get interaction reward weights 
-            pairwise_joint_distance = self.motion_loader_1.get_pairwise_joint_distance(frame=self.episode_length_buf)
-            pairwise_joint_distance = torch.norm(pairwise_joint_distance[:, 23*3:].reshape(self.num_envs, len(self.key_body_indexes)**2, 3), dim=-1) # test: extract relative positions
-            interaction_reward_weights = compute_pairwise_joint_distance_env_weight(pairwise_joint_distance, func=self.pjd_cfg["func"], sqrt=self.pjd_cfg["sqrt"], upper_bound=self.pjd_cfg["upper_bound"]).view(self.num_envs, -1)
-            self.extras["interaction_reward_weights"] = interaction_reward_weights
+            assert self.motion_loader_1.interaction_reward_weights is not None
+            self.extras["interaction_reward_weights"] = self.motion_loader_1.interaction_reward_weights[self.episode_length_buf] 
 
             # animate_pairwise_joint_distance_heatmap(pairwise_joint_distance[0], key_names=self.cfg.key_body_names, sqrt=self.pjd_cfg["sqrt"], upper_bound=self.pjd_cfg["upper_bound"])
-
 
         return {"policy": obs}
     ### Post-physics step (End)
@@ -405,26 +392,26 @@ class Env(DirectRLEnv):
         if motion_loader == self.motion_loader_1: # only sample once for both robots
             self.sample_times = np.zeros(num_samples) if start else motion_loader.sample_times(num_samples, upper_bound=0.95)
         
-        # for imitation reward, use self.episode_length_buf as frame index in dataset
-        if "imitation" in self.cfg.reward:
+        # for imitation reward or sync_motion, use self.episode_length_buf as frame index in dataset
+        if "imitation" in self.cfg.reward or self.cfg.sync_motion is not False:
             self.episode_length_buf[env_ids] = torch.from_numpy(motion_loader._get_frame_index_from_time(self.sample_times)[0]).long().to(self.device)
+
         # sample random motions
         (
             dof_positions,
             dof_velocities,
             body_positions,
             body_rotations,
-            root_linear_velocity,
-            root_angular_velocity,
+            body_linear_velocities,
+            body_angular_velocities,
         ) = motion_loader.sample(num_samples=num_samples, times=self.sample_times)
         
         # get root transforms (the humanoid torso)
-        motion_root_index = motion_loader.get_body_index([self.cfg.reference_body])[0]
         root_state = self.robot1.data.default_root_state[env_ids].clone()
-        root_state[:, 0:3] = body_positions[:, motion_root_index] + self.scene.env_origins[env_ids]
-        root_state[:, 3:7] = body_rotations[:, motion_root_index]
-        root_state[:, 7:10] = root_linear_velocity
-        root_state[:, 10:13] = root_angular_velocity
+        root_state[:, 0:3] = body_positions[:, self.motion_ref_body_index] + self.scene.env_origins[env_ids]
+        root_state[:, 3:7] = body_rotations[:, self.motion_ref_body_index]
+        root_state[:, 7:10] = body_linear_velocities[:, self.motion_ref_body_index]
+        root_state[:, 10:13] = body_angular_velocities[:, self.motion_ref_body_index]
         root_state[:, 2] += self.cfg.init_root_height  # lift the humanoid slightly to avoid collisions with the ground
         # get DOFs state
         dof_pos = dof_positions[:, self.motion_dof_indexes]
@@ -461,8 +448,8 @@ class Env(DirectRLEnv):
                 dof_velocities,
                 body_positions,
                 body_rotations,
-                root_linear_velocity,
-                root_angular_velocity,
+                body_linear_velocities,
+                body_angular_velocities,
             ) = motion_loader.sample(num_samples=num_samples, times=times)
             
             # compute AMP observation
@@ -471,8 +458,8 @@ class Env(DirectRLEnv):
                 dof_velocities[:, self.motion_dof_indexes],
                 body_positions[:, self.motion_ref_body_index],
                 body_rotations[:, self.motion_ref_body_index],
-                root_linear_velocity,
-                root_angular_velocity,
+                body_linear_velocities[:, self.motion_ref_body_index],
+                body_angular_velocities[:, self.motion_ref_body_index],
             ).view(-1, int(self.amp_observation_size/2) if self.robot2 else self.amp_observation_size)
 
             return amp_observation # (num_envs, 2 * obs)
@@ -486,8 +473,8 @@ class Env(DirectRLEnv):
                 dof_velocities,
                 body_positions,
                 body_rotations,
-                root_linear_velocity,
-                root_angular_velocity,
+                body_linear_velocities,
+                body_angular_velocities,
             ) = motion_loader.sample(num_samples=num_samples, times=times)
 
             # compute AMP observation
@@ -496,8 +483,8 @@ class Env(DirectRLEnv):
                 dof_velocities[:, self.motion_dof_indexes],
                 body_positions[:, self.motion_ref_body_index],
                 body_rotations[:, self.motion_ref_body_index],
-                root_linear_velocity,
-                root_angular_velocity,
+                body_linear_velocities[:, self.motion_ref_body_index],
+                body_angular_velocities[:, self.motion_ref_body_index],
             ).view(-1, int(self.amp_observation_size/2) if self.robot2 else self.amp_observation_size)
             
             if self.robot2:
@@ -508,8 +495,8 @@ class Env(DirectRLEnv):
                     dof_velocities,
                     body_positions,
                     body_rotations,
-                    root_linear_velocity,
-                    root_angular_velocity,
+                    body_linear_velocities,
+                    body_angular_velocities,
                 ) = motion_loader.sample(num_samples=num_samples, times=times)
                 # compute AMP observation
                 amp_observation_2 = compute_obs(self,
@@ -517,8 +504,8 @@ class Env(DirectRLEnv):
                     dof_velocities[:, self.motion_dof_indexes],
                     body_positions[:, self.motion_ref_body_index],
                     body_rotations[:, self.motion_ref_body_index],
-                    root_linear_velocity,
-                    root_angular_velocity,
+                    body_linear_velocities[:, self.motion_ref_body_index],
+                    body_angular_velocities[:, self.motion_ref_body_index],
                 ).view(-1, int(self.amp_observation_size/2) if self.robot2 else self.amp_observation_size)
                 amp_observation = torch.cat([amp_observation, amp_observation_2], dim=-1)
 
@@ -536,7 +523,6 @@ class Env(DirectRLEnv):
         # update interaction observation buffer after resetting environments
         #TODO: move joint selection here
         pairwise_joint_distance = self.motion_loader_1.get_pairwise_joint_distance(times=current_times)
-        # pairwise_joint_distance = compute_pairwise_joint_distance_weight(pairwise_joint_distance) # test: temporarily disable
         amp_inter_observation = pairwise_joint_distance.reshape(-1, self.amp_inter_observation_size) # [envs, interaction_space]
 
         return amp_inter_observation # (num_envs, 2 * obs)

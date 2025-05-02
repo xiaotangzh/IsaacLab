@@ -19,8 +19,8 @@ def convert(path, file_name, person: str = "person1", visualize: bool = False):
         text = text_file.read().splitlines()
     
     # check SkeletonMotion
-    print(SKMotion.is_local, SKMotion.local_rotation.shape)
-    print(SKMotion.global_transformation.shape, SKMotion.local_transformation.shape)
+    # print(SKMotion.is_local, SKMotion.local_rotation.shape)
+    # print(SKMotion.global_transformation.shape, SKMotion.local_transformation.shape)
     if visualize: animate3D(SKMotion.global_translation)
     # sys.exit(0)
     

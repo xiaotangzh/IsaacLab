@@ -51,8 +51,8 @@ class MotionLib():
         self.gts = torch.cat([m.global_translation for m in motions], dim=0).float()
         self.grs = torch.cat([m.global_rotation for m in motions], dim=0).float()
         self.lrs = torch.cat([m.local_rotation for m in motions], dim=0).float()
-        self.grvs = torch.cat([m.global_root_velocity for m in motions], dim=0).float()
-        self.gravs = torch.cat([m.global_root_angular_velocity for m in motions], dim=0).float()
+        self.gvs = torch.cat([m.global_velocity for m in motions], dim=0).float()
+        self.gavs = torch.cat([m.global_angular_velocity for m in motions], dim=0).float()
         self.dvs = torch.cat([m.dof_vels for m in motions], dim=0).float()
 
         self.motion_ids = torch.arange(len(self._motions), dtype=torch.long, device=self._device)
@@ -84,8 +84,6 @@ class MotionLib():
         
         root_pos = self.gts[start:end, 0]
         root_rot = self.grs[start:end, 0]
-        root_vel = self.grvs[start:end]
-        root_ang_vel = self.gravs[start:end]
         
         dof_pos = self._local_rotation_to_dof(self.lrs[start:end], 'exp_map')
         dof_vel = self.dvs[start:end]
@@ -94,18 +92,20 @@ class MotionLib():
         
         rigid_body_pos = self.gts[start:end]
         rigid_body_rot = self.grs[start:end]
+        rigid_body_vel = self.gvs[start:end]
+        rigid_body_ang_vel = self.gavs[start:end]
         
         data = {
             'fps': self._motion_fps[0],
             'root_translation': root_pos,
             'root_rotation': root_rot,
-            'root_linear_velocity': root_vel,
-            'root_angular_velocity': root_ang_vel,
             'dof_positions': dof_pos,
             'dof_velocities': dof_vel,
             'local_rotations': local_rot,
             'body_positions': rigid_body_pos,
             'body_rotations': rigid_body_rot,
+            'body_linear_velocities': rigid_body_vel,
+            'body_angular_velocities': rigid_body_ang_vel,
         }
 
         return data

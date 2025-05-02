@@ -52,17 +52,18 @@ class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     robot2 = None
     test_robot: ArticulationCfg = SMPL_CFG.replace(prim_path="/World/envs/env_.*/test_robot")
 
-    reset_strategy = "random_start"
+    reset_strategy = "random"
     sync_motion = "test_robot"
 
     key_body_num = 5
-    interaction_space = key_body_num * key_body_num * 3 + 23 * 3 # relative body positions + dof_velocity
+    interaction_space = key_body_num * key_body_num * 3 * 2
     observation_space = 151 + interaction_space
     action_space = 69
     amp_observation_space =  151
     amp_inter_observation_space = interaction_space 
     pairwise_joint_distance = True
-    key_body_names = ["L_Hand", "R_Hand", "Head", "L_Shoulder", "R_Shoulder"]
+    key_body_names = ["L_Hand", "R_Hand", "Head", "L_Thorax", "R_Thorax"]
+    # key_body_names = ["Head", "Chest", "Torso", "L_Thorax", "R_Thorax", "L_Elbow", "R_Elbow", "L_Hand", "R_Hand", "L_Hip", "R_Hip", "L_Knee", "R_Knee", "L_Toe", "R_Toe"]  
     # reward = ["energy_penalty"]
 
 ### PPO
