@@ -65,7 +65,7 @@ class Env(DirectRLEnv):
         self.amp_observation_size = self.cfg.num_amp_observations * self.cfg.amp_observation_space
         self.amp_observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.amp_observation_size,))
         self.amp_observation_buffer = torch.zeros(
-            (self.num_envs, self.cfg.num_amp_observations, self.cfg.amp_observation_space), device=self.device
+            (self.num_envs, 2 if self.robot2 else 1, self.cfg.num_amp_observations, self.cfg.amp_observation_space), device=self.device
         )
         
         # do not lift root height when syncing motions
@@ -102,11 +102,12 @@ class Env(DirectRLEnv):
             assert self.motion_loader_2 is not None
             self.pjd_cfg = {"sqrt": False, "upper_bound": 1.5, "func": "max"}
             self.motion_loader_1.pairwise_joint_distance = compute_pairwise_joint_distance(self, self.motion_loader_1, self.motion_loader_2, compute_weight=True)
+            self.motion_loader_2.pairwise_joint_distance = compute_pairwise_joint_distance(self, self.motion_loader_2, self.motion_loader_1, compute_weight=True)
 
             self.amp_inter_observation_size = self.cfg.num_amp_observations * self.cfg.amp_inter_observation_space
             self.amp_inter_observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.amp_inter_observation_size,))
             self.amp_inter_observation_buffer = torch.zeros(
-                (self.num_envs, self.cfg.num_amp_observations, self.cfg.amp_inter_observation_space), device=self.device
+                (self.num_envs, 2 if self.robot2 else 1, self.cfg.num_amp_observations, self.cfg.amp_inter_observation_space), device=self.device
             )
             
     def _setup_scene(self):
@@ -165,7 +166,7 @@ class Env(DirectRLEnv):
             self.robot1.set_joint_position_target(target) # apply action to robot1
         else:
             if self.robot2:
-                actions_1, actions_2 = torch.chunk(self.actions, 2, dim=-1)
+                actions_1, actions_2 = torch.chunk(self.actions, 2, dim=0) # test: split along 0 axis
                 target_1 = self.action_offset + self.action_scale * actions_1
                 target_2 = self.action_offset + self.action_scale * actions_2
                 self.robot1.set_joint_position_target(target_1)
@@ -261,7 +262,7 @@ class Env(DirectRLEnv):
             
     def _get_observations(self) -> dict:
         # build task observation
-        obs_1 = compute_obs(self,
+        obs = compute_obs(self,
             self.robot1.data.joint_pos,
             self.robot1.data.joint_vel,
             self.robot1.data.body_pos_w[:, self.ref_body_index],
@@ -280,7 +281,7 @@ class Env(DirectRLEnv):
             )
 
         # detect NaN in observations
-        nan_envs = check_nan(obs_1)
+        nan_envs = check_nan(obs)
         if self.robot2: 
             nan_envs_2 = check_nan(obs_2)
             nan_envs = torch.logical_or(nan_envs, nan_envs_2)
@@ -295,7 +296,7 @@ class Env(DirectRLEnv):
             self._reset_idx(nan_env_ids)
             
             if len(nan_env_ids) > 0:
-                obs_1[nan_env_ids] = compute_obs(self,
+                obs[nan_env_ids] = compute_obs(self,
                     self.robot1.data.joint_pos[nan_env_ids],
                     self.robot1.data.joint_vel[nan_env_ids],
                     self.robot1.data.body_pos_w[nan_env_ids, self.ref_body_index],
@@ -313,56 +314,27 @@ class Env(DirectRLEnv):
                         self.robot2.data.body_ang_vel_w[nan_env_ids, self.ref_body_index],
                     )
         
-        # input states with pose of another character
-        if self.cfg.require_another_pose:
-            obs_1, obs_2 = torch.cat([obs_1, obs_2], dim=-1), torch.cat([obs_2, obs_1], dim=-1)
+        # combine
+        if self.robot2: obs = torch.cat([obs, obs_2], dim=0)
 
-        # if amp obs is different from obs
-        amp_obs_1 = compute_obs(self,
-            self.robot1.data.joint_pos,
-            self.robot1.data.joint_vel,
-            self.robot1.data.body_pos_w[:, self.ref_body_index],
-            self.robot1.data.body_quat_w[:, self.ref_body_index],
-            self.robot1.data.body_lin_vel_w[:, self.ref_body_index],
-            self.robot1.data.body_ang_vel_w[:, self.ref_body_index],
-        )
-        if self.robot2:
-            amp_obs_2 = compute_obs(self,
-                self.robot2.data.joint_pos,
-                self.robot2.data.joint_vel,
-                self.robot2.data.body_pos_w[:, self.ref_body_index],
-                self.robot2.data.body_quat_w[:, self.ref_body_index],
-                self.robot2.data.body_lin_vel_w[:, self.ref_body_index],
-                self.robot2.data.body_ang_vel_w[:, self.ref_body_index],
-            )
-        
-        # combine 2 robots observation 
-        if self.robot2: 
-            obs = torch.cat([obs_1, obs_2], dim=-1)
-            amp_obs = torch.cat([amp_obs_1, amp_obs_2], dim=-1)
-        else: 
-            obs = obs_1
-            amp_obs = amp_obs_1
-
-        # update AMP observation history (pop out)
-        for i in reversed(range(self.cfg.num_amp_observations - 1)):
-            self.amp_observation_buffer[:, i + 1] = self.amp_observation_buffer[:, i]
-        # update AMP observation history (push in)
-        self.amp_observation_buffer[:, 0] = amp_obs.clone() # buffer: [num_envs, num_amp_observations, amp_observation_space]
+        # update AMP observation buffer
+        self.amp_observation_buffer = update_amp_buffer(self, obs.clone(), self.amp_observation_buffer, self.cfg.num_amp_observations)
         self.extras = {"amp_obs": self.amp_observation_buffer.view(-1, self.amp_observation_size)}
 
         # interaction observation
         if self.cfg.pairwise_joint_distance:
-            assert self.test_robot is not None, "test_robot is not None"
-            pairwise_joint_distance = compute_pairwise_joint_distance(self, self.robot1, self.test_robot)
+            if self.test_robot:
+                pairwise_joint_distance = compute_pairwise_joint_distance(self, self.robot1, self.test_robot)
+            elif self.robot2: # test: concat along 0 axis
+                pairwise_joint_distance_1 = compute_pairwise_joint_distance(self, self.robot1, self.robot2)
+                pairwise_joint_distance_2 = compute_pairwise_joint_distance(self, self.robot2, self.robot1)
+                pairwise_joint_distance = torch.cat([pairwise_joint_distance_1, pairwise_joint_distance_2], dim=0)
+
             obs = torch.cat([obs, pairwise_joint_distance], dim=-1)
             amp_inter_obs = pairwise_joint_distance.clone()
 
-            # update interaction observation history (pop out)
-            for i in reversed(range(self.cfg.num_amp_observations - 1)):
-                self.amp_inter_observation_buffer[:, i + 1] = self.amp_inter_observation_buffer[:, i]
-            # update interaction observation history (push in)
-            self.amp_inter_observation_buffer[:, 0] = amp_inter_obs.clone() # buffer: [num_envs, num_amp_inter_observations, amp_inter_observation_space]
+            # update AMP interaction observation buffer
+            self.amp_inter_observation_buffer = update_amp_buffer(self, amp_inter_obs.clone(), self.amp_inter_observation_buffer, self.cfg.num_amp_observations)
             self.extras["amp_interaction_obs"] = self.amp_inter_observation_buffer.view(-1, self.amp_inter_observation_size)
 
             # get interaction reward weights 
@@ -417,21 +389,25 @@ class Env(DirectRLEnv):
         dof_pos = dof_positions[:, self.motion_dof_indexes]
         dof_vel = dof_velocities[:, self.motion_dof_indexes]
 
-        # update AMP observation buffer after resetting environments
+        # reset AMP observation buffer after resetting environments
         amp_observations = self.collect_reference_motions(num_samples, self.sample_times, self.motion_loader_1)
+        self.amp_observation_buffer[env_ids, 0] = amp_observations.view(num_samples, self.cfg.num_amp_observations, -1)
         if self.robot2: 
             amp_observations_2 = self.collect_reference_motions(num_samples, self.sample_times, self.motion_loader_2)
-            amp_observations = torch.cat([amp_observations, amp_observations_2], dim=-1)
-        self.amp_observation_buffer[env_ids] = amp_observations.view(num_samples, self.cfg.num_amp_observations, -1)
+            self.amp_observation_buffer[env_ids, 1] = amp_observations_2.view(num_samples, self.cfg.num_amp_observations, -1)
 
-        # update interaction observation buffer after resetting environments
+        # reset interaction observation buffer after resetting environments
         if self.cfg.pairwise_joint_distance: 
-            amp_inter_observations = self.collect_reference_interactions(num_samples, self.sample_times)
-            self.amp_inter_observation_buffer[env_ids] = amp_inter_observations.view(num_samples, self.cfg.num_amp_observations, -1)
+            amp_inter_observations = self.collect_reference_interactions(num_samples, self.sample_times, self.motion_loader_1)
+            self.amp_inter_observation_buffer[env_ids, 0] = amp_inter_observations.view(num_samples, self.cfg.num_amp_observations, -1)
+            if self.robot2:
+                amp_inter_observations_2 = self.collect_reference_interactions(num_samples, self.sample_times, self.motion_loader_2)
+                self.amp_inter_observation_buffer[env_ids, 1] = amp_inter_observations_2.view(num_samples, self.cfg.num_amp_observations, -1)
+            
 
         return root_state, dof_pos, dof_vel
 
-    def collect_reference_motions(self, num_samples: int, current_times: np.ndarray | None = None, motion_loader=None) -> torch.Tensor:
+    def collect_reference_motions(self, num_samples: int, current_times: np.ndarray | None = None, motion_loader: MotionLoader | None=None) -> torch.Tensor:
         # sample random motion times (or use the one specified)
         if current_times is None:
             current_times = self.motion_loader_1.sample_times(num_samples)
@@ -460,7 +436,7 @@ class Env(DirectRLEnv):
                 body_rotations[:, self.motion_ref_body_index],
                 body_linear_velocities[:, self.motion_ref_body_index],
                 body_angular_velocities[:, self.motion_ref_body_index],
-            ).view(-1, int(self.amp_observation_size/2) if self.robot2 else self.amp_observation_size)
+            ).view(-1, self.amp_observation_size)
 
             return amp_observation # (num_envs, 2 * obs)
 
@@ -485,7 +461,7 @@ class Env(DirectRLEnv):
                 body_rotations[:, self.motion_ref_body_index],
                 body_linear_velocities[:, self.motion_ref_body_index],
                 body_angular_velocities[:, self.motion_ref_body_index],
-            ).view(-1, int(self.amp_observation_size/2) if self.robot2 else self.amp_observation_size)
+            ).view(-1, self.amp_observation_size)
             
             if self.robot2:
                 motion_loader = self.motion_loader_2
@@ -506,12 +482,12 @@ class Env(DirectRLEnv):
                     body_rotations[:, self.motion_ref_body_index],
                     body_linear_velocities[:, self.motion_ref_body_index],
                     body_angular_velocities[:, self.motion_ref_body_index],
-                ).view(-1, int(self.amp_observation_size/2) if self.robot2 else self.amp_observation_size)
-                amp_observation = torch.cat([amp_observation, amp_observation_2], dim=-1)
+                ).view(-1, self.amp_observation_size)
+                amp_observation = torch.cat([amp_observation, amp_observation_2], dim=0) # test: concat along 0 axis
 
             return amp_observation
         
-    def collect_reference_interactions(self, num_samples: int, current_times: np.ndarray | None = None) -> torch.Tensor:
+    def collect_reference_interactions(self, num_samples: int, current_times: np.ndarray | None = None, motion_loader: MotionLoader | None=None) -> torch.Tensor:
         # sample random motion times (or use the one specified)
         if current_times is None:
             current_times = self.motion_loader_1.sample_times(num_samples)
@@ -520,10 +496,20 @@ class Env(DirectRLEnv):
             - self.motion_loader_1.dt * np.arange(0, self.cfg.num_amp_observations)
         ).flatten()
 
-        # update interaction observation buffer after resetting environments
         #TODO: move joint selection here
-        pairwise_joint_distance = self.motion_loader_1.get_pairwise_joint_distance(times=current_times)
-        amp_inter_observation = pairwise_joint_distance.reshape(-1, self.amp_inter_observation_size) # [envs, interaction_space]
+        # update interaction observation buffer after resetting environments
+        if motion_loader: 
+            pairwise_joint_distance = motion_loader.get_pairwise_joint_distance(times=current_times)
+            amp_inter_observation = pairwise_joint_distance.reshape(-1, self.amp_inter_observation_size) # [envs, interaction_space]
+        else:
+            motion_loader = self.motion_loader_1
+            pairwise_joint_distance = motion_loader.get_pairwise_joint_distance(times=current_times)
+            amp_inter_observation = pairwise_joint_distance.reshape(-1, self.amp_inter_observation_size) # [envs, interaction_space]
+            if self.robot2:
+                motion_loader = self.motion_loader_2
+                pairwise_joint_distance_2 = motion_loader.get_pairwise_joint_distance(times=current_times)
+                amp_inter_observation_2 = pairwise_joint_distance_2.reshape(-1, self.amp_inter_observation_size)
+                amp_inter_observation = torch.cat([amp_inter_observation, amp_inter_observation_2], dim=0) # test: concat along 0 axis
 
         return amp_inter_observation # (num_envs, 2 * obs)
     

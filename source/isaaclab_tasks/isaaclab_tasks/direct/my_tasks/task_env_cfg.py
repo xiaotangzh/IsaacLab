@@ -44,7 +44,7 @@ class AMP_Humanoid_rough_walk(AMP_Humanoid):
 
 ### AIP
 @configclass
-class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
+class AIP_InterHuman_TestRobot(EnvCfg2RobotsSMPL):
     # sync motion to test_robot
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_1.npz")
     motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_2.npz")
@@ -63,7 +63,23 @@ class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     amp_inter_observation_space = interaction_space 
     pairwise_joint_distance = True
     key_body_names = ["L_Hand", "R_Hand", "Head", "L_Thorax", "R_Thorax"]
-    # key_body_names = ["Head", "Chest", "Torso", "L_Thorax", "R_Thorax", "L_Elbow", "R_Elbow", "L_Hand", "R_Hand", "L_Hip", "R_Hip", "L_Knee", "R_Knee", "L_Toe", "R_Toe"]  
+    # reward = ["energy_penalty"]
+
+@configclass
+class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_1.npz")
+    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_2.npz")
+
+    reset_strategy = "random"
+
+    key_body_num = 5
+    interaction_space = key_body_num * key_body_num * 3 * 2
+    observation_space = 151 + interaction_space
+    action_space = 69
+    amp_observation_space =  151
+    amp_inter_observation_space = interaction_space 
+    pairwise_joint_distance = True
+    key_body_names = ["L_Hand", "R_Hand", "Head", "L_Thorax", "R_Thorax"]
     # reward = ["energy_penalty"]
 
 ### PPO

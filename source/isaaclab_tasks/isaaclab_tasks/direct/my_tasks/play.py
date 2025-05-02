@@ -132,7 +132,7 @@ if "AIP" in args.task:
     # memory configuration
     rollout_memory = RandomMemory(
         memory_size=agent_cfg["rollouts"], 
-        num_envs=env.num_envs, 
+        num_envs=env.num_envs * (2 if "2Robots" in args.task else 1), #test:
         device=device  
     )
     motion_dataset = RandomMemory(

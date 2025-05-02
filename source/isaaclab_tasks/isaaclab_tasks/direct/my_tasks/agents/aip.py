@@ -366,6 +366,13 @@ class AIP(BaseAgent):
             amp_inter_states = infos["amp_interaction_obs"]
             interaction_reward_weights = infos["interaction_reward_weights"]
 
+            # if two robots
+            if states.shape[0] != rewards.shape[0]:
+                rewards = rewards.repeat(2, 1) #todo: 2 robot task rewards can be different
+                terminated = terminated.repeat(2, 1)
+                truncated = truncated.repeat(2, 1)
+                interaction_reward_weights = interaction_reward_weights.repeat(2, 1)
+
             # reward shaping
             if self._rewards_shaper is not None:
                 rewards = self._rewards_shaper(rewards, timestep, timesteps)

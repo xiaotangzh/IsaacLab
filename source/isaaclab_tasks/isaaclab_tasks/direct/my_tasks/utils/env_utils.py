@@ -250,6 +250,29 @@ def animate_pairwise_joint_distance_heatmap(x, key_names=None, sqrt=False, upper
     plt.ylabel("Key Index")
     plt.pause(0.001) 
 
+def update_amp_buffer(
+    env: "Env",
+    amp_obs,
+    amp_observation_buffer,
+    num_amp_observations,
+):
+    if env.robot2 is None:
+        assert amp_observation_buffer.shape[1] == 1
+        # update AMP observation history (pop out)
+        for i in reversed(range(num_amp_observations - 1)):
+            amp_observation_buffer[:, :, i + 1] = amp_observation_buffer[:, :, i]
+        # update AMP observation history (push in)
+        amp_observation_buffer[:, :, 0] = amp_obs # buffer: [num_envs, num_amp_observations, amp_observation_space]
+        return amp_observation_buffer
+    else:
+        assert amp_observation_buffer.shape[1] == 2
+        amp_obs_1, amp_obs_2 = torch.chunk(amp_obs, 2, dim=0)
+        for i in reversed(range(num_amp_observations - 1)):
+            amp_observation_buffer[:, :, i + 1] = amp_observation_buffer[:, :, i]
+        amp_observation_buffer[:, 0, 0] = amp_obs_1 
+        amp_observation_buffer[:, 1, 0] = amp_obs_2
+        return amp_observation_buffer
+
 # discarded
 def plot_pairwise_joint_distance_weight():
     x = np.linspace(0, 2.0, 100)
