@@ -462,24 +462,6 @@ class AIP(BaseAgent):
             style_reward = compute_discriminator_reward(self, self.discriminator, self._amp_state_preprocessor, amp_states, task_rewards.shape)
             interaction_reward = compute_discriminator_reward(self, self.inter_discriminator, self._amp_inter_state_preprocessor, amp_inter_states, task_rewards.shape)
 
-            # amp_logits, _, _ = self.discriminator.act(
-            #     {"states": self._amp_state_preprocessor(amp_states)}, role="discriminator"
-            # )
-            # style_reward = -torch.log(
-            #     torch.maximum(1 - 1 / (1 + torch.exp(-amp_logits)), torch.tensor(0.0001, device=self.device))
-            # )
-            # style_reward *= self._discriminator_reward_scale
-            # style_reward = style_reward.view(task_rewards.shape)
-
-            # amp_inter_logits, _, _ = self.inter_discriminator.act(
-            #     {"states": self._amp_inter_state_preprocessor(amp_inter_states)}, role="interaction discriminator"
-            # )
-            # interaction_reward = -torch.log(
-            #     torch.maximum(1 - 1 / (1 + torch.exp(-amp_inter_logits)), torch.tensor(0.0001, device=self.device))
-            # )
-            # interaction_reward *= self._discriminator_reward_scale
-            # interaction_reward = interaction_reward.view(task_rewards.shape)
-
         combined_rewards = task_rewards * self._task_reward_weight + style_reward + interaction_reward * interaction_reward_weights
 
         # compute returns and advantages
@@ -502,28 +484,6 @@ class AIP(BaseAgent):
         sampled_batches = sample_mini_batches(self, self.tensors_names)
         sampled_motion_batches, sampled_replay_batches = sample_mini_batches_for_discriminator(self, self.tensors_names, self.motion_dataset, self.reply_buffer, sampled_batches, "amp_states")
         sampled_interaction_batches, sampled_replay_inter_batches = sample_mini_batches_for_discriminator(self, self.tensors_names, self.interaction_dataset, self.reply_buffer_inter, sampled_batches, "amp_inter_states")
-
-        # sampled_batches = self.memory.sample_all(names=self.tensors_names, mini_batches=self._mini_batches)
-        # sampled_motion_batches = self.motion_dataset.sample(
-        #     names=["states"], batch_size=self.memory.memory_size * self.memory.num_envs, mini_batches=self._mini_batches
-        # )
-        # sampled_interaction_batches = self.interaction_dataset.sample(
-        #     names=["states"], batch_size=self.memory.memory_size * self.memory.num_envs, mini_batches=self._mini_batches
-        # )
-        # if len(self.reply_buffer):
-        #     sampled_replay_batches = self.reply_buffer.sample(
-        #         names=["states"],
-        #         batch_size=self.memory.memory_size * self.memory.num_envs,
-        #         mini_batches=self._mini_batches,
-        #     )
-        #     sampled_replay_inter_batches = self.reply_buffer_inter.sample(
-        #         names=["states"],
-        #         batch_size=self.memory.memory_size * self.memory.num_envs,
-        #         mini_batches=self._mini_batches,
-        #     )
-        # else:
-        #     sampled_replay_batches = [[batches[self.tensors_names.index("amp_states")]] for batches in sampled_batches]
-        #     sampled_replay_inter_batches = [[batches[self.tensors_names.index("amp_inter_states")]] for batches in sampled_batches]
 
         cumulative_policy_loss = 0
         cumulative_entropy_loss = 0
