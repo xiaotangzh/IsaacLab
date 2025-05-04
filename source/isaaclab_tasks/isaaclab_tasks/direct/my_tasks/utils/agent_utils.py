@@ -86,7 +86,7 @@ def compute_value_loss(
     value_loss = agent._value_loss_scale * F.mse_loss(sampled_returns, predicted_values)
     return value_loss
 
-def compute_discriminator_loss(
+def compute_batch_discriminator_loss(
     agent: "BaseAgent",
     discriminator: "Model",
     amp_state_preprocessor,
@@ -164,6 +164,18 @@ def compute_discriminator_loss(
         discriminator_loss += agent._discriminator_weight_decay_scale * weight_decay
 
     discriminator_loss *= agent._discriminator_loss_scale
+    return discriminator_loss
+
+def compute_discriminator_loss(
+    agent: "BaseAgent",
+    discriminator: "Model",
+    amp_state_preprocessor,
+    amp_states: torch.Tensor,
+) -> torch.Tensor:
+    amp_logits, _, _ = discriminator.act({"states": amp_state_preprocessor(amp_states)}, role="discriminator")
+    discriminator_loss = 0.5 * (
+        nn.BCEWithLogitsLoss(reduction='none')(amp_logits, torch.ones_like(amp_logits))
+    )
     return discriminator_loss
 
 def compute_entropy_loss(

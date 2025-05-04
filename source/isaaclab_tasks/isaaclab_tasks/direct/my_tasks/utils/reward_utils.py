@@ -1,6 +1,8 @@
 import torch
 import isaaclab.utils.math as math_utils
 from isaaclab.utils.math import quat_rotate
+import torch.nn.functional as F
+import math
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from isaaclab_tasks.direct.my_tasks.env import Env  # avoid circular import error
@@ -64,19 +66,51 @@ def compute_zmp(env: "Env", robot: "Articulation"):
     
     return torch.stack([zmp_x, zmp_y], dim=-1)  # [num_instances, 2]
 
-def compute_angle_offset(env: "Env", target_direction, robot: "Articulation") -> torch.Tensor:
+def get_unit_vector(env: "Env", target_direction):
     if target_direction == "forward":
-        target_direction = torch.tensor([1.0, 0.0, 0.0], device=env.device).unsqueeze(0).repeat(env.num_envs, 1)
+        target_direction = torch.tensor([1.0, 0.0, 0.0], device=env.device).unsqueeze(0)
         idx = 0
     elif target_direction == "leftward":
-        target_direction = torch.tensor([0.0, 1.0, 0.0], device=env.device).unsqueeze(0).repeat(env.num_envs, 1)
+        target_direction = torch.tensor([0.0, 1.0, 0.0], device=env.device).unsqueeze(0)
         idx = 1
     elif target_direction == "upward":
-        target_direction = torch.tensor([0.0, 0.0, 1.0], device=env.device).unsqueeze(0).repeat(env.num_envs, 1)
+        target_direction = torch.tensor([0.0, 0.0, 1.0], device=env.device).unsqueeze(0)
         idx = 2
+    return target_direction, idx
 
-    current_quat = robot.data.body_quat_w[:, env.ref_body_index]
+def transform_quat_to_target_direction(current_quat, target_direction) -> torch.Tensor:
     current_quat = current_quat / torch.norm(current_quat, dim=-1, keepdim=True)
     current_direction = quat_rotate(current_quat, target_direction)
+    return current_direction
+
+def compute_angle_offset(env: "Env", target_direction, robot: "Articulation", angle) -> torch.Tensor:
+    target_direction, idx = get_unit_vector(env, target_direction)
+    target_direction = target_direction.expand(env.num_envs, -1)
+    current_direction = transform_quat_to_target_direction(robot.data.body_quat_w[:, env.ref_body_index], target_direction)
     angle_offset = current_direction[:, idx]  # [-1, 1] from opposite to same direction as target
-    return angle_offset
+    return (angle_offset < angle)
+
+def compute_stuck(env: "Env", robot1: "Articulation", robot2: "Articulation"):
+    avg_body_pos = torch.mean(torch.norm(robot1.data.body_pos_w - robot2.data.body_pos_w, dim=-1), dim=-1)
+    avg_body_vel = torch.mean(torch.norm(torch.cat([robot1.data.body_vel_w, robot2.data.body_vel_w], dim=-1), dim=-1), dim=-1)
+
+    up, _ = get_unit_vector(env, "upward")
+    up = up.expand(env.num_envs, -1)
+    up1 = transform_quat_to_target_direction(robot1.data.body_quat_w[:, env.ref_body_index], up)
+    up2 = transform_quat_to_target_direction(robot2.data.body_quat_w[:, env.ref_body_index], up)
+    angle = F.cosine_similarity(up1, up2, dim=-1) # [-1, 1] from large to small angle
+    angle_rad = torch.acos(torch.clamp(angle, -1.0, 1.0))  # [0, π]
+    angle_deg = angle_rad * (180.0 / math.pi)  # [0, 180]
+
+    # print(avg_pos_too_close, avg_vel_too_small)
+    stucked = (avg_body_pos < 1.4) & (avg_body_vel < 8) & (angle_deg > 25)
+    # print(stucked.shape)
+
+    # stucked.nonzero(as_tuple=False).squeeze(-1)
+    # print(stucked.shape)
+    return stucked
+
+def compute_died_height(env: "Env", robot: "Articulation", termination_heights):
+    died_height = robot.data.body_pos_w[:, env.early_termination_body_indexes, 2] < termination_heights
+    died_height = torch.max(died_height, dim=1).values
+    return died_height

@@ -2,6 +2,7 @@ from code import interact
 from operator import is_
 from random import sample
 import sys
+from turtle import st
 from typing import Any, Callable, Mapping, Optional, Tuple, Union
 
 import copy
@@ -24,6 +25,7 @@ from skrl.resources.schedulers.torch import KLAdaptiveLR
 from skrl.resources.preprocessors.torch import RunningStandardScaler
 from isaaclab_tasks.direct.my_tasks.utils import *
 from isaaclab_tasks.direct.my_tasks.utils.agent_utils import *
+from isaaclab_tasks.direct.my_tasks.bridge.bridge import Bridge
 
 # fmt: off
 # [start-config-dict-torch]
@@ -106,6 +108,7 @@ class AIP(BaseAgent):
         collect_reference_motions: Optional[Callable[[int], torch.Tensor]] = None,
         collect_reference_interactions: Optional[Callable[[int], torch.Tensor]] = None,
         collect_observation: Optional[Callable[[], torch.Tensor]] = None,
+        bridge: Bridge | None = None,
     ) -> None:
         
         _cfg = copy.deepcopy(AIP_DEFAULT_CONFIG)
@@ -128,6 +131,7 @@ class AIP(BaseAgent):
         self.collect_reference_motions = collect_reference_motions
         self.collect_reference_interactions = collect_reference_interactions
         self.collect_observation = collect_observation
+        self.bridge = bridge
 
         # models
         self.policy = self.models.get("policy")
@@ -140,17 +144,6 @@ class AIP(BaseAgent):
         self.checkpoint_modules["value"] = self.value
         self.checkpoint_modules["discriminator"] = self.discriminator
         self.checkpoint_modules["interaction discriminator"] = self.inter_discriminator
-
-        # broadcast models' parameters in distributed runs
-        if config.torch.is_distributed:
-            logger.info(f"Broadcasting models' parameters")
-            if self.policy is not None:
-                self.policy.broadcast_parameters()
-            if self.value is not None:
-                self.value.broadcast_parameters()
-            if self.discriminator is not None:
-                self.discriminator.broadcast_parameters()
-                self.inter_discriminator.broadcast_parameters()
 
         # configuration
         self._learning_epochs = self.cfg["learning_epochs"]
@@ -295,18 +288,6 @@ class AIP(BaseAgent):
         self._current_states = None
 
     def act(self, states: torch.Tensor, timestep: int, timesteps: int) -> torch.Tensor:
-        """Process the environment's states to make a decision (actions) using the main policy
-
-        :param states: Environment's states
-        :type states: torch.Tensor
-        :param timestep: Current timestep
-        :type timestep: int
-        :param timesteps: Number of timesteps
-        :type timesteps: int
-
-        :return: Actions
-        :rtype: torch.Tensor
-        """
         # use collected states
         if self._current_states is not None:
             states = self._current_states
@@ -332,27 +313,6 @@ class AIP(BaseAgent):
         timestep: int,
         timesteps: int,
     ) -> None:
-        """Record an environment transition in memory
-
-        :param states: Observations/states of the environment used to make the decision
-        :type states: torch.Tensor
-        :param actions: Actions taken by the agent
-        :type actions: torch.Tensor
-        :param rewards: Instant rewards achieved by the current actions
-        :type rewards: torch.Tensor
-        :param next_states: Next observations/states of the environment
-        :type next_states: torch.Tensor
-        :param terminated: Signals to indicate that episodes have terminated
-        :type terminated: torch.Tensor
-        :param truncated: Signals to indicate that episodes have been truncated
-        :type truncated: torch.Tensor
-        :param infos: Additional information about the environment
-        :type infos: Any type supported by the environment
-        :param timestep: Current timestep
-        :type timestep: int
-        :param timesteps: Number of timesteps
-        :type timesteps: int
-        """
         # use collected states
         if self._current_states is not None:
             states = self._current_states
@@ -368,11 +328,32 @@ class AIP(BaseAgent):
 
             # if two robots
             if states.shape[0] != rewards.shape[0]:
-                rewards = rewards.repeat(2, 1) #todo: 2 robot task rewards can be different
+                actual_num_envs = rewards.shape[0]
+                rewards = rewards.repeat(2, 1) #todo: 2 robot task rewards can be different, replace repeat with expand
                 terminated = terminated.repeat(2, 1)
                 truncated = truncated.repeat(2, 1)
                 interaction_reward_weights = interaction_reward_weights.repeat(2, 1)
 
+            # test: early termination from discriminator
+            if not timestep % 30:
+                style_loss = compute_discriminator_loss(self, self.discriminator, self._amp_state_preprocessor, amp_states).view(actual_num_envs, -1, 1)
+                interaction_loss = compute_discriminator_loss(self, self.inter_discriminator, self._amp_inter_state_preprocessor, amp_inter_states).view(actual_num_envs, -1, 1)
+                self.track_data("Loss / Style loss", torch.mean(style_loss).item())
+                self.track_data("Loss / Interaction loss", torch.mean(interaction_loss).item())
+
+                # loss 1.5 ~ sigmoid 0.25
+                # loss 2.0 ~ signoid 0.15
+                # loss 3.0 ~ sigmoid 0.05
+                style_terminates = (style_loss > 1.5).any(dim=1).squeeze() 
+                self.bridge.set_terminates(style_terminates)
+
+                # if torch.mean(style_loss) > 1.2: # focus on basic motion style
+                    # terminates = style_terminates.clone()
+                # else: # focus on interaction quality
+                #     interaction_terminates = (interaction_loss > 1.5).any(dim=1).squeeze() 
+                #     terminates = torch.max(torch.stack([style_terminates, interaction_terminates], dim=0), dim=0).values
+                # self.bridge.set_terminates(terminates)
+            
             # reward shaping
             if self._rewards_shaper is not None:
                 rewards = self._rewards_shaper(rewards, timestep, timesteps)
@@ -387,6 +368,19 @@ class AIP(BaseAgent):
                 next_values, _, _ = self.value.act({"states": self._state_preprocessor(next_states)}, role="value")
                 next_values = self._value_preprocessor(next_values, inverse=True)
                 next_values *= terminated.view(-1, 1).logical_not()
+
+            # print(states.shape,
+            #     actions.shape,
+            #     rewards.shape,
+            #     next_states.shape,
+            #     terminated.shape,
+            #     truncated.shape,
+            #     self._current_log_prob.shape,
+            #     values.shape,
+            #     amp_states.shape,
+            #     amp_inter_states.shape,
+            #     next_values.shape,
+            #     interaction_reward_weights.shape,)
 
             self.memory.add_samples(
                 states=states,
@@ -443,6 +437,8 @@ class AIP(BaseAgent):
             self._update(timestep, timesteps)
             self.set_mode("eval")
 
+        if self.bridge: self.bridge.set_timestep(timestep, timesteps)
+
         # write tracking data and checkpoints
         super().post_interaction(timestep, timesteps)
 
@@ -459,7 +455,7 @@ class AIP(BaseAgent):
         self.motion_dataset.add_samples(states=self.collect_reference_motions(self._amp_batch_size))
         self.interaction_dataset.add_samples(states=self.collect_reference_interactions(self._amp_batch_size))
 
-        # compute combined rewards
+        # get data from memory
         task_rewards = self.memory.get_tensor_by_name("rewards")
         amp_states = self.memory.get_tensor_by_name("amp_states")
         amp_inter_states = self.memory.get_tensor_by_name("amp_inter_states")
@@ -468,24 +464,6 @@ class AIP(BaseAgent):
         with torch.no_grad(), torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
             style_reward = compute_discriminator_reward(self, self.discriminator, self._amp_state_preprocessor, amp_states, task_rewards.shape)
             interaction_reward = compute_discriminator_reward(self, self.inter_discriminator, self._amp_inter_state_preprocessor, amp_inter_states, task_rewards.shape)
-
-            # amp_logits, _, _ = self.discriminator.act(
-            #     {"states": self._amp_state_preprocessor(amp_states)}, role="discriminator"
-            # )
-            # style_reward = -torch.log(
-            #     torch.maximum(1 - 1 / (1 + torch.exp(-amp_logits)), torch.tensor(0.0001, device=self.device))
-            # )
-            # style_reward *= self._discriminator_reward_scale
-            # style_reward = style_reward.view(task_rewards.shape)
-
-            # amp_inter_logits, _, _ = self.inter_discriminator.act(
-            #     {"states": self._amp_inter_state_preprocessor(amp_inter_states)}, role="interaction discriminator"
-            # )
-            # interaction_reward = -torch.log(
-            #     torch.maximum(1 - 1 / (1 + torch.exp(-amp_inter_logits)), torch.tensor(0.0001, device=self.device))
-            # )
-            # interaction_reward *= self._discriminator_reward_scale
-            # interaction_reward = interaction_reward.view(task_rewards.shape)
 
         combined_rewards = task_rewards * self._task_reward_weight + style_reward + interaction_reward * interaction_reward_weights
 
@@ -509,28 +487,6 @@ class AIP(BaseAgent):
         sampled_batches = sample_mini_batches(self, self.tensors_names)
         sampled_motion_batches, sampled_replay_batches = sample_mini_batches_for_discriminator(self, self.tensors_names, self.motion_dataset, self.reply_buffer, sampled_batches, "amp_states")
         sampled_interaction_batches, sampled_replay_inter_batches = sample_mini_batches_for_discriminator(self, self.tensors_names, self.interaction_dataset, self.reply_buffer_inter, sampled_batches, "amp_inter_states")
-
-        # sampled_batches = self.memory.sample_all(names=self.tensors_names, mini_batches=self._mini_batches)
-        # sampled_motion_batches = self.motion_dataset.sample(
-        #     names=["states"], batch_size=self.memory.memory_size * self.memory.num_envs, mini_batches=self._mini_batches
-        # )
-        # sampled_interaction_batches = self.interaction_dataset.sample(
-        #     names=["states"], batch_size=self.memory.memory_size * self.memory.num_envs, mini_batches=self._mini_batches
-        # )
-        # if len(self.reply_buffer):
-        #     sampled_replay_batches = self.reply_buffer.sample(
-        #         names=["states"],
-        #         batch_size=self.memory.memory_size * self.memory.num_envs,
-        #         mini_batches=self._mini_batches,
-        #     )
-        #     sampled_replay_inter_batches = self.reply_buffer_inter.sample(
-        #         names=["states"],
-        #         batch_size=self.memory.memory_size * self.memory.num_envs,
-        #         mini_batches=self._mini_batches,
-        #     )
-        # else:
-        #     sampled_replay_batches = [[batches[self.tensors_names.index("amp_states")]] for batches in sampled_batches]
-        #     sampled_replay_inter_batches = [[batches[self.tensors_names.index("amp_inter_states")]] for batches in sampled_batches]
 
         cumulative_policy_loss = 0
         cumulative_entropy_loss = 0
@@ -580,8 +536,8 @@ class AIP(BaseAgent):
                     value_loss = compute_value_loss(self, self.value, sampled_states, sampled_values, sampled_returns)
 
                     # compute discriminator loss
-                    discriminator_loss = compute_discriminator_loss(self, self.discriminator, self._amp_state_preprocessor, batch_index, sampled_amp_states, sampled_replay_batches, sampled_motion_batches)
-                    inter_discriminator_loss = compute_discriminator_loss(self, self.inter_discriminator, self._amp_inter_state_preprocessor, batch_index, sampled_amp_inter_states, sampled_replay_inter_batches, sampled_interaction_batches)
+                    discriminator_loss = compute_batch_discriminator_loss(self, self.discriminator, self._amp_state_preprocessor, batch_index, sampled_amp_states, sampled_replay_batches, sampled_motion_batches)
+                    inter_discriminator_loss = compute_batch_discriminator_loss(self, self.inter_discriminator, self._amp_inter_state_preprocessor, batch_index, sampled_amp_inter_states, sampled_replay_inter_batches, sampled_interaction_batches)
 
                 # optimization step
                 self.optimizer.zero_grad()

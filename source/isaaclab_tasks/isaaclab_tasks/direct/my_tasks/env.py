@@ -22,6 +22,7 @@ from isaaclab_tasks.direct.my_tasks.utils.rewards import *
 from isaaclab_tasks.direct.my_tasks.utils.reward_utils import *
 from isaaclab_tasks.direct.my_tasks.task_env_cfg import BaseEnvCfg
 from isaaclab_tasks.direct.my_tasks.motions.motion_loader import MotionLoader, MotionLoaderHumanoid28, MotionLoaderSMPL
+from isaaclab_tasks.direct.my_tasks.bridge.bridge import Bridge
 
 # marker
 from isaaclab.markers import VisualizationMarkersCfg, VisualizationMarkers
@@ -32,9 +33,9 @@ from isaaclab.terrains import TerrainImporter
 class Env(DirectRLEnv):
     cfg: BaseEnvCfg
 
-    def __init__(self, cfg: BaseEnvCfg, render_mode: str | None = None, **kwargs):
+    def __init__(self, cfg: BaseEnvCfg, render_mode: str | None = None, bridge: Bridge | None=None, **kwargs):
         super().__init__(cfg, render_mode, **kwargs)
-        self.timestep = 0
+        self.bridge = bridge
 
         # action offset and scale
         dof_lower_limits = self.robot1.data.soft_joint_pos_limits[0, :, 0]
@@ -98,11 +99,12 @@ class Env(DirectRLEnv):
         self.com_acc_robot1, self.com_acc_robot2 = zeros_3dim.clone(), zeros_3dim.clone()
 
         # interaction
-        if self.cfg.pairwise_joint_distance:
+        if self.cfg.interaction_modeling:
             assert self.motion_loader_2 is not None
-            self.pjd_cfg = {"sqrt": False, "upper_bound": 1.5, "func": "max"}
-            self.motion_loader_1.pairwise_joint_distance = compute_pairwise_joint_distance(self, self.motion_loader_1, self.motion_loader_2, compute_weight=True)
-            self.motion_loader_2.pairwise_joint_distance = compute_pairwise_joint_distance(self, self.motion_loader_2, self.motion_loader_1, compute_weight=True)
+            self.pjd_cfg = {"sqrt": True, "upper_bound": 1.0, "weight_method": "max"}
+            self.motion_loader_1.pairwise_joint_distance = compute_pairwise_joint_distance(self, self.motion_loader_1, self.motion_loader_2)
+            self.motion_loader_2.pairwise_joint_distance = compute_pairwise_joint_distance(self, self.motion_loader_2, self.motion_loader_1)
+            self.interaction_reward_weights = compute_interaction_env_weight(self, self.motion_loader_1, self.motion_loader_2)
 
             self.amp_inter_observation_size = self.cfg.num_amp_observations * self.cfg.amp_inter_observation_space
             self.amp_inter_observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.amp_inter_observation_size,))
@@ -145,12 +147,11 @@ class Env(DirectRLEnv):
         
     ### Pre-physics step
     def _pre_physics_step(self, actions: torch.Tensor):
-        self.timestep += 1 # (self._sim_step_counter // self.cfg.decimation) is not correct, step is 2 not 1
-
         if self.cfg.action_clip is not None:
-            action_clip = compute_action_clip(self.cfg.action_clip, self.timestep)
+            action_clip = compute_action_clip(self.cfg.action_clip, self.bridge.timestep)
             actions = torch.clip(actions, min=-action_clip, max=action_clip) 
         self.actions = actions.clone()
+        self.bridge.set_episode_length(self.episode_length_buf)
 
     def _apply_action(self):
         # write reference state to robot1 and 2
@@ -180,18 +181,19 @@ class Env(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]: # should return resets and time_out
         time_out = self.episode_length_buf >= self.max_episode_length - 1 # bools of envs that are time out
         if self.cfg.early_termination:
-            died = self.robot1.data.body_pos_w[:, self.early_termination_body_indexes, 2] < self.termination_heights
-            died = torch.max(died, dim=1).values
+            died_list = []
 
-            # compute falling down angle
-            died_1_fall = compute_angle_offset(self, "upward", self.robot1) < 0.3
-            died = torch.max(torch.stack([died, died_1_fall], dim=0), dim=0).values
+            died_list.extend([compute_died_height(self, self.robot1, self.termination_heights), 
+                              compute_angle_offset(self, "upward", self.robot1, 0.4)])
             
             if self.robot2:
-                died_2 = self.robot2.data.body_pos_w[:, self.early_termination_body_indexes, 2] < self.termination_heights
-                died_2 = torch.max(died_2, dim=1).values
-                died_2_fall = compute_angle_offset(self, "upward", self.robot2) < 0.3
-                died = torch.max(torch.stack([died, died_2, died_2_fall], dim=0), dim=0).values
+                died_list.extend([compute_died_height(self, self.robot2, self.termination_heights), 
+                                  compute_angle_offset(self, "upward", self.robot2, 0.4),])
+                                #   compute_stuck(self, self.robot1, self.robot2)])
+            
+            if self.bridge.terminates is not None:
+                died_list.append(self.bridge.get_terminates())
+            died = torch.max(torch.stack(died_list, dim=0), dim=0).values
             
         else: # no early termination until time out
             died = torch.zeros_like(time_out) 
@@ -322,7 +324,7 @@ class Env(DirectRLEnv):
         self.extras = {"amp_obs": self.amp_observation_buffer.view(-1, self.amp_observation_size)}
 
         # interaction observation
-        if self.cfg.pairwise_joint_distance:
+        if self.cfg.interaction_modeling:
             if self.test_robot:
                 pairwise_joint_distance = compute_pairwise_joint_distance(self, self.robot1, self.test_robot)
             elif self.robot2: # test: concat along 0 axis
@@ -330,16 +332,18 @@ class Env(DirectRLEnv):
                 pairwise_joint_distance_2 = compute_pairwise_joint_distance(self, self.robot2, self.robot1)
                 pairwise_joint_distance = torch.cat([pairwise_joint_distance_1, pairwise_joint_distance_2], dim=0)
 
-            obs = torch.cat([obs, pairwise_joint_distance], dim=-1)
+            # update observation and AMP observation
             amp_inter_obs = pairwise_joint_distance.clone()
+            obs = torch.cat([obs, pairwise_joint_distance], dim=-1)
 
             # update AMP interaction observation buffer
             self.amp_inter_observation_buffer = update_amp_buffer(self, amp_inter_obs.clone(), self.amp_inter_observation_buffer, self.cfg.num_amp_observations)
             self.extras["amp_interaction_obs"] = self.amp_inter_observation_buffer.view(-1, self.amp_inter_observation_size)
 
             # get interaction reward weights 
-            assert self.motion_loader_1.interaction_reward_weights is not None
-            self.extras["interaction_reward_weights"] = self.motion_loader_1.interaction_reward_weights[self.episode_length_buf] 
+            assert self.interaction_reward_weights is not None
+            self.extras["interaction_reward_weights"] = self.interaction_reward_weights[self.episode_length_buf].view(self.num_envs, -1)
+            # self.extras["interaction_reward_weights"] = torch.zeros([self.num_envs, 1]).to(self.device) #test: no weights
 
             # animate_pairwise_joint_distance_heatmap(pairwise_joint_distance[0], key_names=self.cfg.key_body_names, sqrt=self.pjd_cfg["sqrt"], upper_bound=self.pjd_cfg["upper_bound"])
 
@@ -397,7 +401,7 @@ class Env(DirectRLEnv):
             self.amp_observation_buffer[env_ids, 1] = amp_observations_2.view(num_samples, self.cfg.num_amp_observations, -1)
 
         # reset interaction observation buffer after resetting environments
-        if self.cfg.pairwise_joint_distance: 
+        if self.cfg.interaction_modeling: 
             amp_inter_observations = self.collect_reference_interactions(num_samples, self.sample_times, self.motion_loader_1)
             self.amp_inter_observation_buffer[env_ids, 0] = amp_inter_observations.view(num_samples, self.cfg.num_amp_observations, -1)
             if self.robot2:
@@ -416,7 +420,7 @@ class Env(DirectRLEnv):
             - self.motion_loader_1.dt * np.arange(0, self.cfg.num_amp_observations)
         ).flatten()
 
-        # update AMP observation buffer after resetting environments
+        # reset AMP observation buffer after resetting environments
         if motion_loader: 
             # get motions
             (
@@ -497,7 +501,7 @@ class Env(DirectRLEnv):
         ).flatten()
 
         #TODO: move joint selection here
-        # update interaction observation buffer after resetting environments
+        # reset interaction observation buffer after resetting environments
         if motion_loader: 
             pairwise_joint_distance = motion_loader.get_pairwise_joint_distance(times=current_times)
             amp_inter_observation = pairwise_joint_distance.reshape(-1, self.amp_inter_observation_size) # [envs, interaction_space]
@@ -511,7 +515,7 @@ class Env(DirectRLEnv):
                 amp_inter_observation_2 = pairwise_joint_distance_2.reshape(-1, self.amp_inter_observation_size)
                 amp_inter_observation = torch.cat([amp_inter_observation, amp_inter_observation_2], dim=0) # test: concat along 0 axis
 
-        return amp_inter_observation # (num_envs, 2 * obs)
+        return amp_inter_observation # (num_envs, 2 steps * obs per step)
     
     def write_ref_state(self, robot: Articulation, ref_state_buffer):
         root_pos_quat = ref_state_buffer['root_state'][self.episode_length_buf, :7]

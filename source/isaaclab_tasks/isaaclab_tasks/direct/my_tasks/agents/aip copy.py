@@ -206,7 +206,7 @@ class AIP(BaseAgent):
         # set up optimizer and learning rate scheduler
         if self.policy is not None and self.value is not None and self.discriminator is not None:
             self.optimizer = torch.optim.Adam(
-                itertools.chain(self.policy.parameters(), self.value.parameters(), self.discriminator.parameters(), self.inter_discriminator.parameters()),
+                itertools.chain(self.policy.parameters(), self.value.parameters(), self.discriminator.parameters()), #, self.inter_discriminator.parameters()), #test:
                 lr=self._learning_rate,
             )
             if self._learning_rate_scheduler is not None:
@@ -366,6 +366,13 @@ class AIP(BaseAgent):
             amp_inter_states = infos["amp_interaction_obs"]
             interaction_reward_weights = infos["interaction_reward_weights"]
 
+            # if two robots
+            if states.shape[0] != rewards.shape[0]:
+                rewards = rewards.repeat(2, 1) #todo: 2 robot task rewards can be different
+                terminated = terminated.repeat(2, 1)
+                truncated = truncated.repeat(2, 1)
+                interaction_reward_weights = interaction_reward_weights.repeat(2, 1)
+
             # reward shaping
             if self._rewards_shaper is not None:
                 rewards = self._rewards_shaper(rewards, timestep, timesteps)
@@ -452,7 +459,7 @@ class AIP(BaseAgent):
         self.motion_dataset.add_samples(states=self.collect_reference_motions(self._amp_batch_size))
         self.interaction_dataset.add_samples(states=self.collect_reference_interactions(self._amp_batch_size))
 
-        # compute combined rewards
+        # get data from memory
         task_rewards = self.memory.get_tensor_by_name("rewards")
         amp_states = self.memory.get_tensor_by_name("amp_states")
         amp_inter_states = self.memory.get_tensor_by_name("amp_inter_states")
@@ -462,7 +469,25 @@ class AIP(BaseAgent):
             style_reward = compute_discriminator_reward(self, self.discriminator, self._amp_state_preprocessor, amp_states, task_rewards.shape)
             interaction_reward = compute_discriminator_reward(self, self.inter_discriminator, self._amp_inter_state_preprocessor, amp_inter_states, task_rewards.shape)
 
-        combined_rewards = task_rewards * self._task_reward_weight + style_reward + interaction_reward * interaction_reward_weights
+            # amp_logits, _, _ = self.discriminator.act(
+            #     {"states": self._amp_state_preprocessor(amp_states)}, role="discriminator"
+            # )
+            # style_reward = -torch.log(
+            #     torch.maximum(1 - 1 / (1 + torch.exp(-amp_logits)), torch.tensor(0.0001, device=self.device))
+            # )
+            # style_reward *= self._discriminator_reward_scale
+            # style_reward = style_reward.view(task_rewards.shape)
+
+            # amp_inter_logits, _, _ = self.inter_discriminator.act(
+            #     {"states": self._amp_inter_state_preprocessor(amp_inter_states)}, role="interaction discriminator"
+            # )
+            # interaction_reward = -torch.log(
+            #     torch.maximum(1 - 1 / (1 + torch.exp(-amp_inter_logits)), torch.tensor(0.0001, device=self.device))
+            # )
+            # interaction_reward *= self._discriminator_reward_scale
+            # interaction_reward = interaction_reward.view(task_rewards.shape)
+
+        combined_rewards = task_rewards * self._task_reward_weight + style_reward #+ interaction_reward * interaction_reward_weights #test:
 
         # compute returns and advantages
         values = self.memory.get_tensor_by_name("values")
@@ -484,6 +509,28 @@ class AIP(BaseAgent):
         sampled_batches = sample_mini_batches(self, self.tensors_names)
         sampled_motion_batches, sampled_replay_batches = sample_mini_batches_for_discriminator(self, self.tensors_names, self.motion_dataset, self.reply_buffer, sampled_batches, "amp_states")
         sampled_interaction_batches, sampled_replay_inter_batches = sample_mini_batches_for_discriminator(self, self.tensors_names, self.interaction_dataset, self.reply_buffer_inter, sampled_batches, "amp_inter_states")
+
+        # sampled_batches = self.memory.sample_all(names=self.tensors_names, mini_batches=self._mini_batches)
+        # sampled_motion_batches = self.motion_dataset.sample(
+        #     names=["states"], batch_size=self.memory.memory_size * self.memory.num_envs, mini_batches=self._mini_batches
+        # )
+        # sampled_interaction_batches = self.interaction_dataset.sample(
+        #     names=["states"], batch_size=self.memory.memory_size * self.memory.num_envs, mini_batches=self._mini_batches
+        # )
+        # if len(self.reply_buffer):
+        #     sampled_replay_batches = self.reply_buffer.sample(
+        #         names=["states"],
+        #         batch_size=self.memory.memory_size * self.memory.num_envs,
+        #         mini_batches=self._mini_batches,
+        #     )
+        #     sampled_replay_inter_batches = self.reply_buffer_inter.sample(
+        #         names=["states"],
+        #         batch_size=self.memory.memory_size * self.memory.num_envs,
+        #         mini_batches=self._mini_batches,
+        #     )
+        # else:
+        #     sampled_replay_batches = [[batches[self.tensors_names.index("amp_states")]] for batches in sampled_batches]
+        #     sampled_replay_inter_batches = [[batches[self.tensors_names.index("amp_inter_states")]] for batches in sampled_batches]
 
         cumulative_policy_loss = 0
         cumulative_entropy_loss = 0
@@ -533,12 +580,12 @@ class AIP(BaseAgent):
                     value_loss = compute_value_loss(self, self.value, sampled_states, sampled_values, sampled_returns)
 
                     # compute discriminator loss
-                    discriminator_loss = compute_discriminator_loss(self, self.discriminator, self._amp_state_preprocessor, batch_index, sampled_amp_states, sampled_replay_batches, sampled_motion_batches)
-                    inter_discriminator_loss = compute_discriminator_loss(self, self.inter_discriminator, self._amp_inter_state_preprocessor, batch_index, sampled_amp_inter_states, sampled_replay_inter_batches, sampled_interaction_batches)
+                    discriminator_loss = compute_batch_discriminator_loss(self, self.discriminator, self._amp_state_preprocessor, batch_index, sampled_amp_states, sampled_replay_batches, sampled_motion_batches)
+                    inter_discriminator_loss = compute_batch_discriminator_loss(self, self.inter_discriminator, self._amp_inter_state_preprocessor, batch_index, sampled_amp_inter_states, sampled_replay_inter_batches, sampled_interaction_batches)
 
                 # optimization step
                 self.optimizer.zero_grad()
-                self.scaler.scale(policy_loss + entropy_loss + value_loss + discriminator_loss + inter_discriminator_loss).backward()
+                self.scaler.scale(policy_loss + entropy_loss + value_loss + discriminator_loss).backward() # + inter_discriminator_loss).backward() #test:
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
 

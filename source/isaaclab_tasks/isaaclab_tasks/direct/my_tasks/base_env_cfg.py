@@ -39,7 +39,6 @@ class BaseEnvCfg(DirectRLEnvCfg):
     state_space: int = 0
     num_amp_observations: int = 2
     amp_observation_space: int = MISSING
-    relative_pose_observation: int = 0
 
     # reward
     reward: list = ["zero"]
@@ -58,7 +57,7 @@ class BaseEnvCfg(DirectRLEnvCfg):
     # two-character config
     require_relative_pose: bool = False # require precompute relative body positions between two robots
     require_another_pose: bool = False # require the local pose information of another character
-    pairwise_joint_distance: bool = False # require pairwise joint distance between two robots
+    interaction_modeling: bool = False # require pairwise joint distance between two robots
     amp_inter_observation_space: int = 0 # observation space for inter robot features
 
     # simulation

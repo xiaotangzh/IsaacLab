@@ -19,6 +19,7 @@ import datetime
 import sys
 
 from utils.utils import *
+from bridge.bridge import Bridge
 
 # parse the arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with skrl.")
@@ -42,7 +43,7 @@ args, hydra_args = parser.parse_known_args()
 assert args.train ^ args.eval, "Exactly one of --train or --eval must be specified."
 assert not (args.eval and args.checkpoint is None), "When --eval is set, --checkpoint must not be None."
 experiment_name = f"{args.task} {args.name}" if args.name else f"{args.task} {datetime.datetime.now().strftime('%d_%H-%M')}"
-checkpoint_interval = min(30000, args.steps // 10)
+checkpoint_interval = min(10000, args.steps // 10)
 
 # start the app
 app_launcher = AppLauncher(args)
@@ -53,7 +54,8 @@ from isaaclab_tasks.utils import parse_env_cfg
 cfg = parse_env_cfg(args.task, num_envs=args.num_envs)
 
 # wrap environment
-env = gymnasium.make(args.task, cfg=cfg, render_mode="rgb_array" if args.video else None)
+bridge = Bridge(args.num_envs, device)
+env = gymnasium.make(args.task, cfg=cfg, bridge=bridge, render_mode="rgb_array" if args.video else None)
 env = wrap_env(env)
 
 # agent configuration
@@ -79,7 +81,7 @@ if "AMP" in args.task:
     # memory configuration
     rollout_memory = RandomMemory(
         memory_size=agent_cfg["rollouts"], 
-        num_envs=env.num_envs, 
+        num_envs=env.num_envs * (2 if "2Robots" in args.task else 1),
         device=device  
     )
     motion_dataset = RandomMemory(
@@ -132,7 +134,7 @@ if "AIP" in args.task:
     # memory configuration
     rollout_memory = RandomMemory(
         memory_size=agent_cfg["rollouts"], 
-        num_envs=env.num_envs * (2 if "2Robots" in args.task else 1), #test:
+        num_envs=env.num_envs * (2 if "2Robots" in args.task else 1), 
         device=device  
     )
     motion_dataset = RandomMemory(
@@ -184,6 +186,7 @@ if "AIP" in args.task:
                 reply_buffer_inter=reply_buffer_inter,
                 collect_reference_motions=env.collect_reference_motions,
                 collect_reference_interactions=env.collect_reference_interactions,
+                bridge=bridge,
                 device=device)
 elif "PPO" in args.task:
     agent_cfg = PPO_DEFAULT_CONFIG.copy()

@@ -14,11 +14,15 @@ MOTIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "motions"
 ### AMP
 @configclass
 class AMP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
-    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_1.npz")
-    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/1_2.npz")
+    motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_1.npz")
+    motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_2.npz")
 
-    reset_strategy = "random_start"
-    sync_motion = True
+    observation_space = 151
+    action_space = 69 
+    amp_observation_space = observation_space
+
+    reset_strategy = "random"
+    sync_motion = False
 
 @configclass
 class AMP_InterHuman(EnvCfg1RobotSMPL):
@@ -70,17 +74,18 @@ class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_1.npz")
     motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_2.npz")
 
-    reset_strategy = "random"
+    reset_strategy = "random_start"
 
-    key_body_num = 5
-    interaction_space = key_body_num * key_body_num * 3 * 2
+    key_body_num = 10
+    interaction_space = key_body_num * key_body_num + key_body_num * 3
     observation_space = 151 + interaction_space
     action_space = 69
     amp_observation_space =  151
     amp_inter_observation_space = interaction_space 
-    pairwise_joint_distance = True
-    key_body_names = ["L_Hand", "R_Hand", "Head", "L_Thorax", "R_Thorax"]
+    interaction_modeling = True
+    key_body_names = ["Head", "Torso", "L_Thorax", "R_Thorax", "L_Shoulder", "R_Shoulder", "L_Elbow", "R_Elbow", "L_Hand", "R_Hand"]
     # reward = ["energy_penalty"]
+    init_root_height = 0.0
 
 ### PPO
 @configclass

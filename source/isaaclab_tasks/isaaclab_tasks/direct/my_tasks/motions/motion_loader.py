@@ -38,7 +38,6 @@ class MotionLoader:
 
         # two characters properties
         self.pairwise_joint_distance: torch.Tensor | None = None # [frames, body_num * body_num, 3]
-        self.interaction_reward_weights: torch.Tensor | None = None # [frames, 1]
 
     @property
     def dof_names(self) -> list[str]:
