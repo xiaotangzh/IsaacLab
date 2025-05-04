@@ -101,10 +101,11 @@ class Env(DirectRLEnv):
         # interaction
         if self.cfg.interaction_modeling:
             assert self.motion_loader_2 is not None
-            self.pjd_cfg = {"sqrt": True, "upper_bound": 1.0, "weight_method": "max"}
+            self.pjd_cfg = {"sqrt": False, "upper_bound": 1.5, "weighted": False, "weight_method": "max"}
             self.motion_loader_1.pairwise_joint_distance = compute_pairwise_joint_distance(self, self.motion_loader_1, self.motion_loader_2)
             self.motion_loader_2.pairwise_joint_distance = compute_pairwise_joint_distance(self, self.motion_loader_2, self.motion_loader_1)
             self.interaction_reward_weights = compute_interaction_env_weight(self, self.motion_loader_1, self.motion_loader_2)
+            self.interaction_reward_weights += 1.0 #test:
 
             self.amp_inter_observation_size = self.cfg.num_amp_observations * self.cfg.amp_inter_observation_space
             self.amp_inter_observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.amp_inter_observation_size,))
@@ -341,9 +342,7 @@ class Env(DirectRLEnv):
             self.extras["amp_interaction_obs"] = self.amp_inter_observation_buffer.view(-1, self.amp_inter_observation_size)
 
             # get interaction reward weights 
-            assert self.interaction_reward_weights is not None
-            self.extras["interaction_reward_weights"] = self.interaction_reward_weights[self.episode_length_buf].view(self.num_envs, -1)
-            # self.extras["interaction_reward_weights"] = torch.zeros([self.num_envs, 1]).to(self.device) #test: no weights
+            self.extras["interaction_reward_weights"] = self.interaction_reward_weights[self.episode_length_buf].view(self.num_envs, -1) if self.interaction_reward_weights is not None else torch.ones([self.num_envs, 1]).to(self.device)
 
             # animate_pairwise_joint_distance_heatmap(pairwise_joint_distance[0], key_names=self.cfg.key_body_names, sqrt=self.pjd_cfg["sqrt"], upper_bound=self.pjd_cfg["upper_bound"])
 

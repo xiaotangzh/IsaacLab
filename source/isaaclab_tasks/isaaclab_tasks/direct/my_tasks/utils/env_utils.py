@@ -114,30 +114,31 @@ def compute_interaction_env_weight(env: "Env", ego: "MotionLoader", target: "Mot
     return interaction_reward_weights
 
 # test: pjd1 pairwise joint distance
-# def compute_pairwise_joint_distance(env: "Env", ego: Union["MotionLoader", "Articulation"], target: Union["MotionLoader", "Articulation"]):
-#     cls1 = type(ego).__name__
-#     cls2 = type(target).__name__
+def compute_pairwise_joint_distance(env: "Env", ego: Union["MotionLoader", "Articulation"], target: Union["MotionLoader", "Articulation"]):
+    cls1 = type(ego).__name__
+    cls2 = type(target).__name__
 
-#     if "MotionLoader" in cls1 and "MotionLoader" in cls2:
-#         body_positions_1 = ego.get_all_references()[2][0, :, env.motion_body_indexes] # [frames, body num, 3]
-#         body_positions_2 = target.get_all_references()[2][0, :, env.motion_body_indexes] # [frames, body num, 3]
-#     elif "Articulation" in cls1 and "Articulation" in cls2:
-#         body_positions_1 = ego.data.body_pos_w # [envs, body num, 3]
-#         body_positions_2 = target.data.body_pos_w # [envs, body num, 3]
-#     instances = body_positions_1.shape[0]
+    if "MotionLoader" in cls1 and "MotionLoader" in cls2:
+        body_positions_1 = ego.get_all_references()[2][0, :, env.motion_body_indexes] # [frames, body num, 3]
+        body_positions_2 = target.get_all_references()[2][0, :, env.motion_body_indexes] # [frames, body num, 3]
+    elif "Articulation" in cls1 and "Articulation" in cls2:
+        body_positions_1 = ego.data.body_pos_w # [envs, body num, 3]
+        body_positions_2 = target.data.body_pos_w # [envs, body num, 3]
+    instances = body_positions_1.shape[0]
 
-#     # key bodies
-#     body_positions_1 = body_positions_1[:, env.key_body_indexes] # [frames or envs, key body num, 3]
-#     body_positions_2 = body_positions_2[:, env.key_body_indexes] # [frames or envs, key body num, 3]
+    # key bodies
+    body_positions_1 = body_positions_1[:, env.key_body_indexes] # [frames or envs, key body num, 3]
+    body_positions_2 = body_positions_2[:, env.key_body_indexes] # [frames or envs, key body num, 3]
 
-#     # calculate pairwise distance
-#     body_positions_1_expand = body_positions_1.unsqueeze(2)  # [frames or envs, body_num, 1, 3]
-#     body_positions_2_expand = body_positions_2.unsqueeze(1)  # [frames or envs, 1, body_num, 3]
-#     diff = body_positions_1_expand - body_positions_2_expand  # [frames or envs, body_num, body_num, 3]
-#     pairwise_joint_distance = torch.norm(diff, dim=-1).view(instances, -1) # [frames or envs, body_num * body_num]
-#     weighted_pairwise_joint_distance = compute_pairwise_joint_distance_weight(pairwise_joint_distance, sqrt=env.pjd_cfg["sqrt"], upper_bound=env.pjd_cfg["upper_bound"]) # [frames or envs, body_num * body_num]
+    # calculate pairwise distance
+    body_positions_1_expand = body_positions_1.unsqueeze(2)  # [frames or envs, body_num, 1, 3]
+    body_positions_2_expand = body_positions_2.unsqueeze(1)  # [frames or envs, 1, body_num, 3]
+    diff = body_positions_1_expand - body_positions_2_expand  # [frames or envs, body_num, body_num, 3]
+    pairwise_joint_distance = torch.norm(diff, dim=-1).view(instances, -1) # [frames or envs, body_num * body_num]
+    if env.pjd_cfg["weighted"]: 
+        pairwise_joint_distance = compute_pairwise_joint_distance_weight(pairwise_joint_distance, sqrt=env.pjd_cfg["sqrt"], upper_bound=env.pjd_cfg["upper_bound"]) # [frames or envs, body_num * body_num]
 
-#     return weighted_pairwise_joint_distance
+    return pairwise_joint_distance
 
 
 # test: pjd2  relative body positions + dof velocities
@@ -215,37 +216,38 @@ def compute_interaction_env_weight(env: "Env", ego: "MotionLoader", target: "Mot
 #     return interaction
 
 # test: pjd4 relative body positions + pairwise joint distance
-def compute_pairwise_joint_distance(env: "Env", ego: Union["MotionLoader", "Articulation"], target: Union["MotionLoader", "Articulation"]) -> torch.Tensor:
-    cls1 = type(ego).__name__
-    cls2 = type(target).__name__
+# def compute_pairwise_joint_distance(env: "Env", ego: Union["MotionLoader", "Articulation"], target: Union["MotionLoader", "Articulation"]) -> torch.Tensor:
+#     cls1 = type(ego).__name__
+#     cls2 = type(target).__name__
 
-    if "MotionLoader" in cls1 and "MotionLoader" in cls2:
-        body_positions_1 = ego.get_all_references()[2][0, :, env.motion_body_indexes] # [frames, body num, 3]
-        body_positions_2 = target.get_all_references()[2][0, :, env.motion_body_indexes] # [frames, body num, 3]
-    elif "Articulation" in cls1 and "Articulation" in cls2:
-        body_positions_1 = ego.data.body_pos_w # [envs, body num, 3]
-        body_positions_2 = target.data.body_pos_w # [envs, body num, 3]
-    instances = body_positions_1.shape[0]
+#     if "MotionLoader" in cls1 and "MotionLoader" in cls2:
+#         body_positions_1 = ego.get_all_references()[2][0, :, env.motion_body_indexes] # [frames, body num, 3]
+#         body_positions_2 = target.get_all_references()[2][0, :, env.motion_body_indexes] # [frames, body num, 3]
+#     elif "Articulation" in cls1 and "Articulation" in cls2:
+#         body_positions_1 = ego.data.body_pos_w # [envs, body num, 3]
+#         body_positions_2 = target.data.body_pos_w # [envs, body num, 3]
+#     instances = body_positions_1.shape[0]
 
-    # key bodies
-    ref_body_position_1 = body_positions_1[:, env.ref_body_index] # [frames or envs, 3]
-    body_positions_1 = body_positions_1[:, env.key_body_indexes] # [frames or envs, key body num, 3]
-    body_positions_2 = body_positions_2[:, env.key_body_indexes] # [frames or envs, key body num, 3]
+#     # key bodies
+#     ref_body_position_1 = body_positions_1[:, env.ref_body_index] # [frames or envs, 3]
+#     body_positions_1 = body_positions_1[:, env.key_body_indexes] # [frames or envs, key body num, 3]
+#     body_positions_2 = body_positions_2[:, env.key_body_indexes] # [frames or envs, key body num, 3]
 
-    # calculate relative body positions
-    body_positions_2_in_1 = body_positions_2 - ref_body_position_1.unsqueeze(1) # [frames or envs, key body num, 3]
+#     # calculate relative body positions
+#     body_positions_2_in_1 = body_positions_2 - ref_body_position_1.unsqueeze(1) # [frames or envs, key body num, 3]
 
-    # calculate pairwise joint distance
-    body_positions_1_expand = body_positions_1.unsqueeze(2)  # [frames or envs, body_num, 1, 3]
-    body_positions_2_expand = body_positions_2.unsqueeze(1)  # [frames or envs, 1, body_num, 3]
-    relative_positions = body_positions_1_expand - body_positions_2_expand  # [frames or envs, body_num, body_num, 3]
-    pairwise_joint_distance = torch.norm(relative_positions, dim=-1).view(instances, -1)  # [frames or envs, body_num * body_num]
-    weighted_pairwise_joint_distance = compute_pairwise_joint_distance_weight(pairwise_joint_distance, sqrt=env.pjd_cfg["sqrt"], upper_bound=env.pjd_cfg["upper_bound"]) # [frames or envs, body_num * body_num]
+#     # calculate pairwise joint distance
+#     body_positions_1_expand = body_positions_1.unsqueeze(2)  # [frames or envs, body_num, 1, 3]
+#     body_positions_2_expand = body_positions_2.unsqueeze(1)  # [frames or envs, 1, body_num, 3]
+#     relative_positions = body_positions_1_expand - body_positions_2_expand  # [frames or envs, body_num, body_num, 3]
+#     pairwise_joint_distance = torch.norm(relative_positions, dim=-1).view(instances, -1)  # [frames or envs, body_num * body_num]
+#     if env.pjd_cfg["weighted"]: 
+#         pairwise_joint_distance = compute_pairwise_joint_distance_weight(pairwise_joint_distance, sqrt=env.pjd_cfg["sqrt"], upper_bound=env.pjd_cfg["upper_bound"]) # [frames or envs, body_num * body_num]
 
-    # combine
-    interaction = torch.cat([body_positions_2_in_1.view(instances, -1), weighted_pairwise_joint_distance.view(instances, -1)], dim=-1)  # [frames or envs, interaction_space]
+#     # combine
+#     interaction = torch.cat([body_positions_2_in_1.view(instances, -1), pairwise_joint_distance.view(instances, -1)], dim=-1)  # [frames or envs, interaction_space]
 
-    return interaction
+    # return interaction
 
 def compute_pairwise_joint_distance_weight(x, sqrt=True, upper_bound=1.0):
     '''
