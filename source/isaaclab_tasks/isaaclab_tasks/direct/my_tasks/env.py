@@ -51,6 +51,7 @@ class Env(DirectRLEnv):
         self.motion_loader_2 = MotionLoader(motion_file=self.cfg.motion_file_2, device=self.device) if self.cfg.motion_file_2 is not None else None 
         self.sample_times = None # synchronize sampling times for two robots
         if self.cfg.episode_length_s <= 0: self.cfg.episode_length_s = self.motion_loader_1.duration
+        self.frame_indexes = torch.zeros([self.num_envs], device=self.device) 
 
         # DOF and key body indexes
         key_body_names = self.cfg.key_body_names
@@ -69,11 +70,6 @@ class Env(DirectRLEnv):
             (self.num_envs, 2 if self.robot2 else 1, self.cfg.num_amp_observations, self.cfg.amp_observation_space), device=self.device
         )
         
-        # do not lift root height when syncing motions
-        if self.cfg.sync_motion:
-            self.cfg.init_root_height = 0.0
-            self.cfg.episode_length_s = self.motion_loader_1.duration
-
         # markers
         self.green_markers = VisualizationMarkers(self.cfg.marker_green_cfg)
         self.red_markers = VisualizationMarkers(self.cfg.marker_red_cfg)
@@ -82,7 +78,8 @@ class Env(DirectRLEnv):
 
         # set reference motions
         if self.cfg.sync_motion or "imitation" in self.cfg.reward:
-            self.ref_state_buffer_length, self.ref_state_buffer_index = self.max_episode_length, 0
+            self.cfg.init_root_height = 0.0
+            self.cfg.episode_length_s = self.motion_loader_1.duration
             self.ref_state_buffer_1 = {}
             self.ref_state_buffer_2 = {}
             reset_reference_buffer(self, self.motion_loader_1, self.ref_state_buffer_1)
@@ -179,8 +176,13 @@ class Env(DirectRLEnv):
     ### Pre-physics step (End)
 
     ### Post-physics step
-    def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]: # should return resets and time_out
+    def post_step(self) -> None:
         self.extras = {} # reset info dictionary to avoid all errors in post-physics 
+        self.frame_indexes += 1 # update frame indexes
+
+    def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]: # should return resets and time_out
+        self.post_step()
+
         truncated = self.episode_length_buf >= self.max_episode_length - 1 # bools of envs that are time out
 
         if self.cfg.early_termination:
@@ -358,7 +360,7 @@ class Env(DirectRLEnv):
             self.extras["amp_interaction_obs"] = self.amp_inter_observation_buffer.view(-1, self.amp_inter_observation_size)
 
             # get interaction reward weights 
-            self.extras["interaction_reward_weights"] = self.interaction_reward_weights[self.episode_length_buf].view(self.num_envs, -1) if self.interaction_reward_weights is not None else torch.ones([self.num_envs, 1]).to(self.device)
+            self.extras["interaction_reward_weights"] = self.interaction_reward_weights[self.frame_indexes].view(self.num_envs, -1) if self.interaction_reward_weights is not None else torch.ones([self.num_envs, 1]).to(self.device)
 
             # animate_pairwise_joint_distance_heatmap(pairwise_joint_distance[0], key_names=self.cfg.key_body_names, sqrt=self.pjd_cfg["sqrt"], upper_bound=self.pjd_cfg["upper_bound"])
 
@@ -383,9 +385,10 @@ class Env(DirectRLEnv):
         if motion_loader == self.motion_loader_1: # only sample once for both robots
             self.sample_times = np.zeros(num_samples) if start else motion_loader.sample_times(num_samples, upper_bound=0.95)
         
-        # for imitation reward or sync_motion, use self.episode_length_buf as frame index in dataset
-        if "imitation" in self.cfg.reward or self.cfg.sync_motion is not False:
-            self.episode_length_buf[env_ids] = torch.from_numpy(motion_loader._get_frame_index_from_time(self.sample_times)[0]).long().to(self.device)
+        # reset frame indexes
+        self.frame_indexes[env_ids] = torch.from_numpy(motion_loader._get_frame_index_from_time(self.sample_times)[0]).to(self.device)
+        if self.cfg.sync_motion or "imitation" in self.cfg.reward: 
+            self.episode_length_buf = self.frame_indexes # avoid exceeding the frame length of dataset
 
         # sample random motions
         (
@@ -533,12 +536,12 @@ class Env(DirectRLEnv):
         return amp_inter_observation # (num_envs, 2 steps * obs per step)
     
     def write_ref_state(self, robot: Articulation, ref_state_buffer):
-        root_pos_quat = ref_state_buffer['root_state'][self.episode_length_buf, :7]
+        root_pos_quat = ref_state_buffer['root_state'][self.frame_indexes, :7]
         root_pos_quat[:, :3] += self.scene.env_origins
 
         robot.write_root_link_pose_to_sim(root_pos_quat,
                                           robot._ALL_INDICES)
-        robot.write_root_com_velocity_to_sim(ref_state_buffer['root_state'][self.episode_length_buf, 7:],
+        robot.write_root_com_velocity_to_sim(ref_state_buffer['root_state'][self.frame_indexes, 7:],
                                              robot._ALL_INDICES)
         
         # what is the difference between the two lines below?
@@ -547,8 +550,8 @@ class Env(DirectRLEnv):
         # self.robot.write_root_state_to_sim(self.ref_state_buffer['root_state'][:, self.ref_state_buffer_index], 
         #                                           self.robot._ALL_INDICES)
         
-        robot.write_joint_state_to_sim(ref_state_buffer["dof_pos"][self.episode_length_buf],
-                                       ref_state_buffer["dof_vel"][self.episode_length_buf],
+        robot.write_joint_state_to_sim(ref_state_buffer["dof_pos"][self.frame_indexes],
+                                       ref_state_buffer["dof_vel"][self.frame_indexes],
                                        None, robot._ALL_INDICES)
 
 
