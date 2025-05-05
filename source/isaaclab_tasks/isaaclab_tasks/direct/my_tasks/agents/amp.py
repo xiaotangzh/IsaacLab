@@ -377,9 +377,12 @@ class AMP(BaseAgent):
             # if two robots
             if states.shape[0] != rewards.shape[0]:
                 actual_num_envs = rewards.shape[0]
-                rewards = rewards.repeat(2, 1) #todo: 2 robot task rewards can be different
-                terminated = terminated.repeat(2, 1)
+                rewards = rewards.repeat(2, 1) #todo: 2 robot task rewards can be different, replace repeat with expand
                 truncated = truncated.repeat(2, 1)
+
+                # 2 robot termination should be different
+                terminated = torch.cat([infos["terminated_1"].view(actual_num_envs, 1), 
+                                        infos["terminated_2"].view(actual_num_envs, 1)], dim=0) # [2 * actual_num_envs, 1]
 
             style_loss = compute_discriminator_loss(self, self.discriminator, self._amp_state_preprocessor, amp_states).view(actual_num_envs, -1, 1)
             self.track_data("Loss / Style loss", torch.mean(style_loss).item())
