@@ -16,6 +16,8 @@ from skrl.memories.torch import Memory
 from skrl.models.torch import Model
 from skrl.resources.schedulers.torch import KLAdaptiveLR
 from skrl.resources.preprocessors.torch import RunningStandardScaler
+from isaaclab_tasks.direct.my_tasks.utils.agent_utils import *
+from isaaclab_tasks.direct.my_tasks.bridge.bridge import Bridge
 
 # fmt: off
 # [start-config-dict-torch]
@@ -374,9 +376,13 @@ class AMP(BaseAgent):
 
             # if two robots
             if states.shape[0] != rewards.shape[0]:
+                actual_num_envs = rewards.shape[0]
                 rewards = rewards.repeat(2, 1) #todo: 2 robot task rewards can be different
                 terminated = terminated.repeat(2, 1)
                 truncated = truncated.repeat(2, 1)
+
+            style_loss = compute_discriminator_loss(self, self.discriminator, self._amp_state_preprocessor, amp_states).view(actual_num_envs, -1, 1)
+            self.track_data("Loss / Style loss", torch.mean(style_loss).item())
 
             # reward shaping
             if self._rewards_shaper is not None:
@@ -526,7 +532,12 @@ class AMP(BaseAgent):
             style_reward *= self._discriminator_reward_scale
             style_reward = style_reward.view(rewards.shape)
 
-        combined_rewards = self._task_reward_weight * rewards + self._style_reward_weight * style_reward
+        task_rewards = rewards * self._task_reward_weight
+        style_reward = style_reward * self._style_reward_weight
+        combined_rewards = task_rewards + style_reward
+
+        # log discriminator rewards
+        self.track_data("Reward / Style reward", torch.mean(style_reward).item())
 
         # compute returns and advantages
         values = self.memory.get_tensor_by_name("values")
