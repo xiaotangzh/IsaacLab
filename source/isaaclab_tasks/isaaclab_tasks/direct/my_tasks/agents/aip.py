@@ -344,7 +344,7 @@ class AIP(BaseAgent):
                 # loss 1.5 ~ sigmoid 0.25
                 # loss 2.0 ~ signoid 0.15
                 # loss 3.0 ~ sigmoid 0.05
-                style_terminates = (style_loss > 1.5).any(dim=1).squeeze() 
+                style_terminates = (style_loss > 2.5).any(dim=1).squeeze() 
                 self.bridge.set_terminates(style_terminates)
 
                 # if torch.mean(style_loss) > 1.2: # focus on basic motion style
@@ -465,7 +465,14 @@ class AIP(BaseAgent):
             style_reward = compute_discriminator_reward(self, self.discriminator, self._amp_state_preprocessor, amp_states, task_rewards.shape)
             interaction_reward = compute_discriminator_reward(self, self.inter_discriminator, self._amp_inter_state_preprocessor, amp_inter_states, task_rewards.shape)
 
-        combined_rewards = task_rewards * self._task_reward_weight + style_reward + interaction_reward * interaction_reward_weights
+        task_rewards = task_rewards * self._task_reward_weight
+        style_reward = style_reward * interaction_reward_weights
+        interaction_reward = interaction_reward #* interaction_reward_weights
+        combined_rewards = task_rewards + style_reward + interaction_reward 
+
+        # log discriminator rewards
+        self.track_data("Reward / Style reward", torch.mean(style_reward).item())
+        self.track_data("Reward / Interaction reward", torch.mean(interaction_reward).item())
 
         # compute returns and advantages
         values = self.memory.get_tensor_by_name("values")
