@@ -338,17 +338,18 @@ class AIP(BaseAgent):
                                         infos["terminated_2"].view(actual_num_envs, 1)], dim=0) # [2 * actual_num_envs, 1]
 
             # test: early termination from discriminator
-            if not timestep % 30:
-                style_loss = compute_discriminator_loss(self, self.discriminator, self._amp_state_preprocessor, amp_states).view(actual_num_envs, -1, 1)
-                interaction_loss = compute_discriminator_loss(self, self.inter_discriminator, self._amp_inter_state_preprocessor, amp_inter_states).view(actual_num_envs, -1, 1)
-                self.track_data("Loss / Style loss", torch.mean(style_loss).item())
-                self.track_data("Loss / Interaction loss", torch.mean(interaction_loss).item())
+            # if not timestep % 30:
+            #     style_loss = compute_discriminator_loss(self, self.discriminator, self._amp_state_preprocessor, amp_states).view(actual_num_envs, -1, 1)
+            #     interaction_loss = compute_discriminator_loss(self, self.inter_discriminator, self._amp_inter_state_preprocessor, amp_inter_states).view(actual_num_envs, -1, 1)
+            #     self.track_data("Loss / Style loss", torch.mean(style_loss).item())
+            #     self.track_data("Loss / Interaction loss", torch.mean(interaction_loss).item())
 
-                # loss 1.5 ~ sigmoid 0.25
-                # loss 2.0 ~ signoid 0.15
-                # loss 3.0 ~ sigmoid 0.05
-                style_terminates = (style_loss > 3.2).any(dim=-1) # [actual_num_envs, 1 or 2]
-                self.bridge.set_terminates(style_terminates)
+            #     # loss 1.5 ~ sigmoid 0.25
+            #     # loss 2.0 ~ signoid 0.15
+            #     # loss 3.0 ~ sigmoid 0.05
+            #     if torch.mean(style_loss).item() > 2.0: # only if motion quality is too bad (local optima)
+            #         style_terminates = (style_loss > 2.0).any(dim=-1) # [actual_num_envs, 1 or 2]
+            #         self.bridge.set_terminates(style_terminates)
 
                 # if torch.mean(style_loss) > 1.2: # focus on basic motion style
                     # terminates = style_terminates.clone()
