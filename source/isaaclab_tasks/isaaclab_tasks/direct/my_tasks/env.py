@@ -182,7 +182,7 @@ class Env(DirectRLEnv):
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]: # should return resets and time_out
         self.extras = {} # reset info dictionary to avoid all errors in post-physics 
         truncated = self.episode_length_buf >= self.max_episode_length - 1 # bools of envs that are time out
-        
+
         if self.cfg.early_termination:
             # must use different terminates, this will impact critic network training
             terminated_1, terminated_2 = [], []
@@ -209,8 +209,8 @@ class Env(DirectRLEnv):
                 # used for calculating values in the critic network
                 terminated_1 = torch.max(torch.stack(terminated_1, dim=0), dim=0).values # [num_envs,]
                 terminated_2 = torch.max(torch.stack(terminated_2, dim=0), dim=0).values # [num_envs,]
-                self.extras["terminated_1"] = terminated_1  # error raised if return 2 envs terminated
-                self.extras["terminated_2"] = terminated_2 
+                self.extras["terminated_1"] = terminated_1 # error raised if return 2 envs terminated
+                self.extras["terminated_2"] = terminated_2
 
         else: # no early termination until time out
             terminated = torch.zeros_like(truncated)

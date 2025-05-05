@@ -347,7 +347,7 @@ class AIP(BaseAgent):
                 # loss 1.5 ~ sigmoid 0.25
                 # loss 2.0 ~ signoid 0.15
                 # loss 3.0 ~ sigmoid 0.05
-                style_terminates = (style_loss > 2.5).any(dim=-1) # [actual_num_envs, 1 or 2]
+                style_terminates = (style_loss > 3.2).any(dim=-1) # [actual_num_envs, 1 or 2]
                 self.bridge.set_terminates(style_terminates)
 
                 # if torch.mean(style_loss) > 1.2: # focus on basic motion style
@@ -365,6 +365,12 @@ class AIP(BaseAgent):
             with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
                 values, _, _ = self.value.act({"states": self._state_preprocessor(states)}, role="value")
                 values = self._value_preprocessor(values, inverse=True)
+
+            # time-limit (truncation) bootstrapping 
+            # todo: look into if we need this
+            # enabling this will make the reward estimation more accurate and long-term
+            if self._time_limit_bootstrap:
+                rewards += self._discount_factor * values * truncated
 
             # compute next values
             with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
@@ -385,6 +391,7 @@ class AIP(BaseAgent):
             #     next_values.shape,
             #     interaction_reward_weights.shape,)
 
+            # storage transition in memory
             self.memory.add_samples(
                 states=states,
                 actions=actions,
