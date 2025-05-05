@@ -51,7 +51,7 @@ class Env(DirectRLEnv):
         self.motion_loader_2 = MotionLoader(motion_file=self.cfg.motion_file_2, device=self.device) if self.cfg.motion_file_2 is not None else None 
         self.sample_times = None # synchronize sampling times for two robots
         if self.cfg.episode_length_s <= 0: self.cfg.episode_length_s = self.motion_loader_1.duration
-        self.frame_indexes = torch.zeros([self.num_envs], device=self.device) 
+        self.frame_indexes = torch.zeros([self.num_envs], device=self.device, dtype=torch.long) # tensors used as indices must be long, int, byte or bool tensors
 
         # DOF and key body indexes
         key_body_names = self.cfg.key_body_names
@@ -386,7 +386,7 @@ class Env(DirectRLEnv):
             self.sample_times = np.zeros(num_samples) if start else motion_loader.sample_times(num_samples, upper_bound=0.95)
         
         # reset frame indexes
-        self.frame_indexes[env_ids] = torch.from_numpy(motion_loader._get_frame_index_from_time(self.sample_times)[0]).to(self.device)
+        self.frame_indexes[env_ids] = torch.from_numpy(motion_loader._get_frame_index_from_time(self.sample_times)[0]).long().to(self.device)
         if self.cfg.sync_motion or "imitation" in self.cfg.reward: 
             self.episode_length_buf = self.frame_indexes # avoid exceeding the frame length of dataset
 
