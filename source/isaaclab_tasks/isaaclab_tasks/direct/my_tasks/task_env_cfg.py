@@ -77,7 +77,7 @@ class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     reset_strategy = "random_start"
 
     key_body_num = 10
-    interaction_space = key_body_num * key_body_num + key_body_num * 3
+    interaction_space = key_body_num * key_body_num #+ key_body_num * 3
     observation_space = 151 + interaction_space
     action_space = 69
     amp_observation_space =  151

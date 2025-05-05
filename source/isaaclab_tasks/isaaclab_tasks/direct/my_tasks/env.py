@@ -98,7 +98,7 @@ class Env(DirectRLEnv):
         # interaction
         if self.cfg.interaction_modeling:
             assert self.motion_loader_2 is not None
-            self.pjd_cfg = {"sqrt": False, "upper_bound": 1.5, "weighted": False, "weight_method": "max"}
+            self.pjd_cfg = {"sqrt": True, "upper_bound": 1.5, "weighted": True, "weight_method": "max"}
             self.motion_loader_1.pairwise_joint_distance = compute_pairwise_joint_distance(self, self.motion_loader_1, self.motion_loader_2)
             self.motion_loader_2.pairwise_joint_distance = compute_pairwise_joint_distance(self, self.motion_loader_2, self.motion_loader_1)
             self.interaction_reward_weights = compute_interaction_env_weight(self, self.motion_loader_1, self.motion_loader_2)
