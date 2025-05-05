@@ -26,7 +26,7 @@ class Bridge:
     def set_terminates(self, terminates):
         self.terminates = terminates
 
-    def get_terminates(self):
+    def get_terminates(self) -> torch.Tensor | None:
         if self.terminates is None: return None
 
         terminates = self.terminates

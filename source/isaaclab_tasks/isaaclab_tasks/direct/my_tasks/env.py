@@ -180,26 +180,42 @@ class Env(DirectRLEnv):
 
     ### Post-physics step
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]: # should return resets and time_out
-        time_out = self.episode_length_buf >= self.max_episode_length - 1 # bools of envs that are time out
+        self.extras = {} # reset info dictionary to avoid all errors in post-physics 
+        truncated = self.episode_length_buf >= self.max_episode_length - 1 # bools of envs that are time out
+        
         if self.cfg.early_termination:
-            died_list = []
+            # must use different terminates, this will impact critic network training
+            terminated_1, terminated_2 = [], []
 
-            died_list.extend([compute_died_height(self, self.robot1, self.termination_heights), 
+            terminated_1.extend([compute_died_height(self, self.robot1, self.termination_heights), 
                               compute_angle_offset(self, "upward", self.robot1, 0.4)])
             
             if self.robot2:
-                died_list.extend([compute_died_height(self, self.robot2, self.termination_heights), 
+                terminated_2.extend([compute_died_height(self, self.robot2, self.termination_heights), 
                                   compute_angle_offset(self, "upward", self.robot2, 0.4),])
                                 #   compute_stuck(self, self.robot1, self.robot2)])
             
             if self.bridge.terminates is not None:
-                died_list.append(self.bridge.get_terminates())
-            died = torch.max(torch.stack(died_list, dim=0), dim=0).values
+                agent_terminates = self.bridge.get_terminates()
+                terminated_1.append(agent_terminates[:, 0])
+
+                if agent_terminates.shape[1] == 2:
+                    terminated_2.append(agent_terminates[:, 1])
+
+            # used for reset environments
+            terminated = torch.max(torch.stack(terminated_1 + terminated_2, dim=0), dim=0).values # [num_envs,]
             
+            if self.robot2:
+                # used for calculating values in the critic network
+                terminated_1 = torch.max(torch.stack(terminated_1, dim=0), dim=0).values # [num_envs,]
+                terminated_2 = torch.max(torch.stack(terminated_2, dim=0), dim=0).values # [num_envs,]
+                self.extras["terminated_1"] = terminated_1  # error raised if return 2 envs terminated
+                self.extras["terminated_2"] = terminated_2 
+
         else: # no early termination until time out
-            died = torch.zeros_like(time_out) 
+            terminated = torch.zeros_like(truncated)
             
-        return died, time_out
+        return terminated, truncated
     
     def _get_rewards(self) -> torch.Tensor:
         rewards = torch.zeros([self.num_envs], device=self.device)
@@ -224,7 +240,7 @@ class Env(DirectRLEnv):
         nan_envs = check_nan(rewards)
         if torch.any(nan_envs):
             nan_env_ids = torch.nonzero(nan_envs, as_tuple=False).flatten()
-            print(f"Warning: NaN detected in rewards {nan_env_ids.tolist()}.")
+            print(f"NaN detected in rewards {nan_env_ids.tolist()}.")
             rewards[nan_env_ids] = 0.0
 
         # normalize rewards
@@ -295,7 +311,7 @@ class Env(DirectRLEnv):
             if nan_env_ids.shape[0] == self.num_envs:
                 print("All environments are NaN, training process ends.")
                 sys.exit(0)
-            print(f"Warning: NaN detected in envs {nan_env_ids.tolist()}, resetting these envs.")
+            print(f"NaN detected in envs {nan_env_ids.tolist()}, resetting these envs.")
             self._reset_idx(nan_env_ids)
             
             if len(nan_env_ids) > 0:
@@ -322,7 +338,7 @@ class Env(DirectRLEnv):
 
         # update AMP observation buffer
         self.amp_observation_buffer = update_amp_buffer(self, obs.clone(), self.amp_observation_buffer, self.cfg.num_amp_observations)
-        self.extras = {"amp_obs": self.amp_observation_buffer.view(-1, self.amp_observation_size)}
+        self.extras["amp_obs"] = self.amp_observation_buffer.view(-1, self.amp_observation_size)
 
         # interaction observation
         if self.cfg.interaction_modeling:

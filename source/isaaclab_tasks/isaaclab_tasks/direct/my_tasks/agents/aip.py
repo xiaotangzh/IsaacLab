@@ -330,9 +330,12 @@ class AIP(BaseAgent):
             if states.shape[0] != rewards.shape[0]:
                 actual_num_envs = rewards.shape[0]
                 rewards = rewards.repeat(2, 1) #todo: 2 robot task rewards can be different, replace repeat with expand
-                terminated = terminated.repeat(2, 1)
                 truncated = truncated.repeat(2, 1)
                 interaction_reward_weights = interaction_reward_weights.repeat(2, 1)
+
+                # 2 robot termination should be different
+                terminated = torch.cat([infos["terminated_1"].view(actual_num_envs, 1), 
+                                        infos["terminated_2"].view(actual_num_envs, 1)], dim=0) # [2 * actual_num_envs, 1]
 
             # test: early termination from discriminator
             if not timestep % 30:
@@ -344,7 +347,7 @@ class AIP(BaseAgent):
                 # loss 1.5 ~ sigmoid 0.25
                 # loss 2.0 ~ signoid 0.15
                 # loss 3.0 ~ sigmoid 0.05
-                style_terminates = (style_loss > 2.5).any(dim=1).squeeze() 
+                style_terminates = (style_loss > 2.5).any(dim=-1) # [actual_num_envs, 1 or 2]
                 self.bridge.set_terminates(style_terminates)
 
                 # if torch.mean(style_loss) > 1.2: # focus on basic motion style
