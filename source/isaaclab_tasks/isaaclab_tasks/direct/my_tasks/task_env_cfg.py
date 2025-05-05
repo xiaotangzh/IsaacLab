@@ -21,7 +21,7 @@ class AMP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     action_space = 69 
     amp_observation_space = observation_space
 
-    reset_strategy = "random"
+    reset_strategy = "random_start"
     sync_motion = False
 
 @configclass

@@ -31,14 +31,14 @@ export PYTHONPATH=$PYTHONPATH:$path_to_your_repo
 cd "/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/my_tasks"
 
 # AMP interhuman
-# python play.py --train --task AMP-InterHuman --num_envs 4096 --name "motion26 env4096 steps100w lr1e-3" --steps 1000000 --params 1024 --wandb --headless --disable_progressbar --lr 1e-3
+python play.py --train --task AMP-InterHuman-2Robots --num_envs 10000 --name "test_if_inter_reward_contradict_with_style_reward motion26 env10000 steps30w" --steps 300000 --params 1024 --wandb --headless --disable_progressbar 
 
 # AMP humanoid
 # python play.py --train --task AMP-Humanoid --num_envs 4096 --name "rough walk env4096 steps100w" --steps 1000000 --params 1024 --wandb --headless --disable_progressbar
 
 
 # AIP
-python play.py --train --task AIP-InterHuman-2Robots --num_envs 10000 --name "motion26 env10000 step30w pjd4 GAN_terminate" --steps 300000 --wandb --headless --disable_progressbar
+# python play.py --train --task AIP-InterHuman-2Robots --num_envs 10000 --name "motion26 env10000 step30w pjd4 GAN_terminate_loss_2.5 weight_on_style_reward" --steps 300000 --wandb --headless --disable_progressbar
 
 # PPO interhuman
 # python play.py --train --task PPO-InterHuman-2Robots --num_envs 512 --name "motion 1 env512 steps 20w imitation" --steps 200000 --wandb --headless --disable_progressbar
