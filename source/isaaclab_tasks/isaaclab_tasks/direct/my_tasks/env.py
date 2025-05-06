@@ -415,6 +415,8 @@ class Env(DirectRLEnv):
         root_state[:, 7:10] = body_linear_velocities[:, self.motion_ref_body_index]
         root_state[:, 10:13] = body_angular_velocities[:, self.motion_ref_body_index]
         root_state[:, 2] += self.cfg.init_root_height  # lift the humanoid slightly to avoid collisions with the ground
+        if self.cfg.init_root_apart is not None and motion_loader == self.motion_loader_2:
+            root_state[:, :2] += self.cfg.init_root_apart
         # get DOFs state
         dof_pos = dof_positions[:, self.motion_dof_indexes]
         dof_vel = dof_velocities[:, self.motion_dof_indexes]

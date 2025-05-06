@@ -46,6 +46,7 @@ class BaseEnvCfg(DirectRLEnvCfg):
     # motions
     action_clip: list | float | None = None # [clip_start, clip_end, annealing_steps]
     init_root_height: float = 0.15
+    init_root_apart: float | None = None # initial root apart distance to avoid collision
     early_termination: bool = True
     key_body_names: list = MISSING
     termination_bodies: list = MISSING
