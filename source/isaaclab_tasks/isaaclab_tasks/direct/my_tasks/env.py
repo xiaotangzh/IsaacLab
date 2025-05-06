@@ -269,7 +269,7 @@ class Env(DirectRLEnv):
             if self.robot2: root_state_2, joint_pos_2, joint_vel_2 = self.reset_strategy_default(env_ids, self.robot2)
         elif self.cfg.reset_strategy.startswith("random"):
             root_state_1, joint_pos_1, joint_vel_1 = self.reset_strategy_random(env_ids, self.motion_loader_1, "start" in self.cfg.reset_strategy)
-            if self.robot2: root_state_2, joint_pos_2, joint_vel_2 = self.reset_strategy_random(env_ids, self.motion_loader_2, "start" in self.cfg.reset_strategy)
+            if self.robot2: root_state_2, joint_pos_2, joint_vel_2 = self.reset_strategy_random(env_ids, self.motion_loader_2, "start" in self.cfg.reset_strategy, root_state_1)
         else:
             raise ValueError(f"Unknown reset strategy: {self.cfg.reset_strategy}")
         
@@ -385,7 +385,7 @@ class Env(DirectRLEnv):
         return root_state, joint_pos, joint_vel
 
     def reset_strategy_random(
-        self, env_ids: torch.Tensor, motion_loader: MotionLoader, start: bool = False
+        self, env_ids: torch.Tensor, motion_loader: MotionLoader, start: bool = False, root_state_1: torch.Tensor | None = None
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]: # env_ids: the ids of envs to be reset
         num_samples = env_ids.shape[0]
 
@@ -415,8 +415,13 @@ class Env(DirectRLEnv):
         root_state[:, 7:10] = body_linear_velocities[:, self.motion_ref_body_index]
         root_state[:, 10:13] = body_angular_velocities[:, self.motion_ref_body_index]
         root_state[:, 2] += self.cfg.init_root_height  # lift the humanoid slightly to avoid collisions with the ground
-        if self.cfg.init_root_apart is not None and motion_loader == self.motion_loader_2: # avoid collision between two robots
-            root_state[:, :2] += self.cfg.init_root_apart
+        
+        # avoid collision between two robots
+        if self.cfg.init_root_apart is not None and motion_loader == self.motion_loader_2: 
+            assert root_state_1 is not None
+            direction = root_state[:, :2] - root_state_1[:, :2]
+            root_state[:, :2] += self.cfg.init_root_apart * direction
+            
         # get DOFs state
         dof_pos = dof_positions[:, self.motion_dof_indexes]
         dof_vel = dof_velocities[:, self.motion_dof_indexes]
