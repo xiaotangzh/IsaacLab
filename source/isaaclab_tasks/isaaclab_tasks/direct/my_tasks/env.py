@@ -184,7 +184,7 @@ class Env(DirectRLEnv):
     def post_step(self) -> None:
         self.extras = {} # reset info dictionary to avoid all errors in post-physics 
         self.frame_indexes += 1 # update frame indexes
-        if (self.frame_indexes >= self.motion_loader_1.num_frames).any():
+        if self.cfg.require_sync_frame_index and (self.frame_indexes >= self.motion_loader_1.num_frames).any():
             print("frame index exceeds the number of frames, resetting frame indexes as max frame index.")
             self.frame_indexes = torch.clamp(self.frame_indexes, max=self.motion_loader_1.num_frames - 1)
 
