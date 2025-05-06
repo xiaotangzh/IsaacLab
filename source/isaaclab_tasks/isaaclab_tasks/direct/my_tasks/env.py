@@ -20,6 +20,7 @@ from isaaclab_tasks.direct.my_tasks.utils.env_utils import *
 from isaaclab_tasks.direct.my_tasks.utils.utils import *
 from isaaclab_tasks.direct.my_tasks.utils.rewards import *
 from isaaclab_tasks.direct.my_tasks.utils.reward_utils import *
+from isaaclab_tasks.direct.my_tasks.utils.interaction_utils import *
 from isaaclab_tasks.direct.my_tasks.task_env_cfg import BaseEnvCfg
 from isaaclab_tasks.direct.my_tasks.motions.motion_loader import MotionLoader, MotionLoaderHumanoid28, MotionLoaderSMPL
 from isaaclab_tasks.direct.my_tasks.bridge.bridge import Bridge
@@ -76,10 +77,13 @@ class Env(DirectRLEnv):
         self.green_markers_small = VisualizationMarkers(self.cfg.marker_green_small_cfg)
         self.red_markers_small = VisualizationMarkers(self.cfg.marker_red_small_cfg)
 
+        # sync frame index to avoid exceeding the number of frames in dataset
+        if self.cfg.sync_motion or self.cfg.require_sync_frame_index:
+            self.cfg.episode_length_s = self.motion_loader_1.duration
+
         # set reference motions
         if self.cfg.sync_motion or "imitation" in self.cfg.reward:
             self.cfg.init_root_height = 0.0
-            self.cfg.episode_length_s = self.motion_loader_1.duration
             self.ref_state_buffer_1 = {}
             self.ref_state_buffer_2 = {}
             reset_reference_buffer(self, self.motion_loader_1, self.ref_state_buffer_1)
@@ -165,7 +169,7 @@ class Env(DirectRLEnv):
             self.robot1.set_joint_position_target(target) # apply action to robot1
         else:
             if self.robot2:
-                actions_1, actions_2 = torch.chunk(self.actions, 2, dim=0) # test: split along 0 axis
+                actions_1, actions_2 = torch.chunk(self.actions, 2, dim=0) 
                 target_1 = self.action_offset + self.action_scale * actions_1
                 target_2 = self.action_offset + self.action_scale * actions_2
                 self.robot1.set_joint_position_target(target_1)
@@ -179,6 +183,9 @@ class Env(DirectRLEnv):
     def post_step(self) -> None:
         self.extras = {} # reset info dictionary to avoid all errors in post-physics 
         self.frame_indexes += 1 # update frame indexes
+        if (self.frame_indexes >= self.motion_loader_1.num_frames).any():
+            print("frame index exceeds the number of frames, resetting frame indexes as max frame index.")
+            self.frame_indexes = torch.clamp(self.frame_indexes, max=self.motion_loader_1.num_frames - 1)
 
     def _get_dones(self) -> tuple[torch.Tensor, torch.Tensor]: # should return resets and time_out
         self.post_step()
@@ -346,7 +353,7 @@ class Env(DirectRLEnv):
         if self.cfg.interaction_modeling:
             if self.test_robot:
                 pairwise_joint_distance = compute_pairwise_joint_distance(self, self.robot1, self.test_robot)
-            elif self.robot2: # test: concat along 0 axis
+            elif self.robot2:
                 pairwise_joint_distance_1 = compute_pairwise_joint_distance(self, self.robot1, self.robot2)
                 pairwise_joint_distance_2 = compute_pairwise_joint_distance(self, self.robot2, self.robot1)
                 pairwise_joint_distance = torch.cat([pairwise_joint_distance_1, pairwise_joint_distance_2], dim=0)
@@ -387,7 +394,7 @@ class Env(DirectRLEnv):
         
         # reset frame indexes
         self.frame_indexes[env_ids] = torch.from_numpy(motion_loader._get_frame_index_from_time(self.sample_times)[0]).long().to(self.device)
-        if self.cfg.sync_motion or "imitation" in self.cfg.reward: 
+        if self.cfg.sync_motion or self.cfg.require_sync_frame_index: 
             self.episode_length_buf = self.frame_indexes # avoid exceeding the frame length of dataset
 
         # sample random motions
@@ -505,7 +512,7 @@ class Env(DirectRLEnv):
                     body_linear_velocities[:, self.motion_ref_body_index],
                     body_angular_velocities[:, self.motion_ref_body_index],
                 ).view(-1, self.amp_observation_size)
-                amp_observation = torch.cat([amp_observation, amp_observation_2], dim=0) # test: concat along 0 axis
+                amp_observation = torch.cat([amp_observation, amp_observation_2], dim=0) 
 
             return amp_observation
         
@@ -531,7 +538,7 @@ class Env(DirectRLEnv):
                 motion_loader = self.motion_loader_2
                 pairwise_joint_distance_2 = motion_loader.get_pairwise_joint_distance(times=current_times)
                 amp_inter_observation_2 = pairwise_joint_distance_2.reshape(-1, self.amp_inter_observation_size)
-                amp_inter_observation = torch.cat([amp_inter_observation, amp_inter_observation_2], dim=0) # test: concat along 0 axis
+                amp_inter_observation = torch.cat([amp_inter_observation, amp_inter_observation_2], dim=0) 
 
         return amp_inter_observation # (num_envs, 2 steps * obs per step)
     

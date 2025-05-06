@@ -52,6 +52,7 @@ class BaseEnvCfg(DirectRLEnvCfg):
     termination_heights: list = MISSING
     reference_body: str = MISSING
     sync_motion: int | bool | str = False # apply reference actions instead of predicted actions to robots
+    require_sync_frame_index: bool = False # require sync episode buffer to dataset frame index
     reset_strategy: str = "default"  # default, random, random-start (time zero from dataset)
 
     # two-character config

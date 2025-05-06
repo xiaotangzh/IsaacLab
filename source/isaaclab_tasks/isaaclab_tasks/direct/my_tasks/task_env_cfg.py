@@ -21,7 +21,7 @@ class AMP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     action_space = 69 
     amp_observation_space = observation_space
 
-    reset_strategy = "random_start"
+    reset_strategy = "random"
     sync_motion = False
 
 @configclass
@@ -59,14 +59,15 @@ class AIP_InterHuman_TestRobot(EnvCfg2RobotsSMPL):
     reset_strategy = "random"
     sync_motion = "test_robot"
 
-    key_body_num = 5
-    interaction_space = key_body_num * key_body_num * 3 * 2
+    key_body_num = 10
+    interaction_space = key_body_num * key_body_num #* 3 * 2
     observation_space = 151 + interaction_space
     action_space = 69
     amp_observation_space =  151
     amp_inter_observation_space = interaction_space 
-    pairwise_joint_distance = True
-    key_body_names = ["L_Hand", "R_Hand", "Head", "L_Thorax", "R_Thorax"]
+    interaction_modeling = True
+    # key_body_names = ["L_Hand", "R_Hand", "Head", "L_Thorax", "R_Thorax"] # rel_pos + rel_vel
+    key_body_names = ["L_Hand", "R_Hand", "L_Toe", "R_Toe", "Head" , "L_Shoulder", "R_Shoulder", "L_Hip", "R_Hip", "Torso"]
     # reward = ["energy_penalty"]
 
 
@@ -76,7 +77,7 @@ class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_1.npz")
     motion_file_2 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_2.npz")
 
-    reset_strategy = "random_start"
+    reset_strategy = "random"
 
     key_body_num = 10
     interaction_space = key_body_num * key_body_num #+ key_body_num * 3
@@ -88,7 +89,8 @@ class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     key_body_names = ["Head", "Torso", "L_Thorax", "R_Thorax", "L_Shoulder", "R_Shoulder", "L_Elbow", "R_Elbow", "L_Hand", "R_Hand"]
     # reward = ["energy_penalty"]
     init_root_height = 0.0
-    action_clip = 0.2 #test:
+    action_clip = 0.1 #test:
+    require_sync_frame_index = True
 
 ### PPO
 @configclass

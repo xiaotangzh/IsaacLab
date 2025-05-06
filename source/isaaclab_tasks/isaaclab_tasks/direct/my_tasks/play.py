@@ -21,6 +21,9 @@ import sys
 from utils.utils import *
 from bridge.bridge import Bridge
 
+# for debugging
+# os.environ["CUDA_LAUNCH_BLOCKING"] = "1" 
+
 # parse the arguments
 parser = argparse.ArgumentParser(description="Train an RL agent with skrl.")
 parser.add_argument("--num_envs", type=int, default=16, help="Number of environments to simulate.")
