@@ -37,7 +37,7 @@ cd "/home2/sgtn88/IsaacLab/source/isaaclab_tasks/isaaclab_tasks/direct/my_tasks"
 # python play.py --train --task AMP-Humanoid --num_envs 4096 --name "rough walk env4096 steps100w" --steps 1000000 --params 1024 --wandb --headless --disable_progressbar
 
 # AIP
-python play.py --train --task AIP-InterHuman-TestRobot --num_envs 4096 --name "motion26 env4096 step30w pjd2 no_reward_weight action_clip_0.1 random_init" --steps 300000 --wandb --headless --disable_progressbar
+python play.py --train --task AIP-InterHuman-2Robots --num_envs 4096 --name "motion26 env4096 step30w pjd2 style_reward_x3 action_clip_0.1 random_init" --steps 300000 --wandb --headless --disable_progressbar
 
 # PPO interhuman
 # python play.py --train --task PPO-InterHuman-2Robots --num_envs 512 --name "motion 1 env512 steps 20w imitation" --steps 200000 --wandb --headless --disable_progressbar
