@@ -476,7 +476,7 @@ class AIP(BaseAgent):
             interaction_reward = compute_discriminator_reward(self, self.inter_discriminator, self._amp_inter_state_preprocessor, amp_inter_states, task_rewards.shape)
 
         task_rewards = task_rewards * self._task_reward_weight # 1 or 0
-        style_reward = style_reward * 3 #* interaction_reward_weights
+        style_reward = style_reward * 10 #* interaction_reward_weights
         interaction_reward = interaction_reward #* interaction_reward_weights
         combined_rewards = task_rewards + style_reward + interaction_reward 
 
