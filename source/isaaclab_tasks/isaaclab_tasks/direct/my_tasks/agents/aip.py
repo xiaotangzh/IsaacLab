@@ -478,7 +478,7 @@ class AIP(BaseAgent):
         task_rewards = task_rewards * self._task_reward_weight # 1 or 0
         style_reward = style_reward * interaction_reward_weights
         interaction_reward = interaction_reward #* interaction_reward_weights
-        combined_rewards = task_rewards + style_reward + interaction_reward 
+        combined_rewards = task_rewards + style_reward #+ interaction_reward 
 
         # log discriminator rewards
         self.track_data("Reward / Style reward", torch.mean(style_reward).item())

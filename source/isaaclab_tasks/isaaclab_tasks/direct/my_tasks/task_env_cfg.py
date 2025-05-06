@@ -88,7 +88,7 @@ class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     key_body_names = ["Head", "Torso", "L_Thorax", "R_Thorax", "L_Shoulder", "R_Shoulder", "L_Elbow", "R_Elbow", "L_Hand", "R_Hand"]
     # reward = ["energy_penalty"]
     init_root_height = 0.0
-    action_clip = 0.15 #test:
+    action_clip = 0.2 #test:
 
 ### PPO
 @configclass
