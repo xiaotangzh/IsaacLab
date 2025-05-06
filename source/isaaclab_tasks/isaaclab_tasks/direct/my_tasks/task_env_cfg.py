@@ -79,18 +79,26 @@ class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
 
     reset_strategy = "random"
 
-    key_body_num = 10
-    interaction_space = key_body_num * key_body_num #+ key_body_num * 3
+    # pjd1,4
+    # key_body_num = 10
+    # key_body_names = ["Head", "Torso", "L_Thorax", "R_Thorax", "L_Shoulder", "R_Shoulder", "L_Elbow", "R_Elbow", "L_Hand", "R_Hand"]
+    # interaction_space = key_body_num * key_body_num #+ key_body_num * 3
+
+    # pjd2
+    key_body_num = 5
+    key_body_names = ["Head", "L_Thorax", "R_Thorax", "L_Hand", "R_Hand"]
+    interaction_space = key_body_num * key_body_num * 3 
+
+
     observation_space = 151 + interaction_space
     action_space = 69
     amp_observation_space =  151
     amp_inter_observation_space = interaction_space 
     interaction_modeling = True
-    key_body_names = ["Head", "Torso", "L_Thorax", "R_Thorax", "L_Shoulder", "R_Shoulder", "L_Elbow", "R_Elbow", "L_Hand", "R_Hand"]
     # reward = ["energy_penalty"]
     init_root_height = 0.0
     action_clip = 0.1 #test:
-    require_sync_frame_index = True
+    require_sync_frame_index = False
 
 ### PPO
 @configclass

@@ -84,39 +84,33 @@ def compute_pairwise_joint_distance(env: "Env", ego: Union["MotionLoader", "Arti
     return pairwise_joint_distance
 
 
-# test: pjd2  relative body positions + dof velocities
-# def compute_pairwise_joint_distance(env: "Env", ego: Union["MotionLoader", "Articulation"], target: Union["MotionLoader", "Articulation"], compute_weight: bool=False) -> torch.Tensor:
-#     '''
-#     All DoF velocities of the other robot + Pairwise joint relative position (keys * keys * 3)
-#     '''
-#     cls1 = type(ego).__name__
-#     cls2 = type(target).__name__
+# test: pjd2  relative body positions 
+def compute_pairwise_joint_distance(env: "Env", ego: Union["MotionLoader", "Articulation"], target: Union["MotionLoader", "Articulation"]) -> torch.Tensor:
+    cls1 = type(ego).__name__
+    cls2 = type(target).__name__
 
-#     if "MotionLoader" in cls1 and "MotionLoader" in cls2:
-#         body_positions_1 = ego.get_all_references()[2][0, :, env.motion_body_indexes] # [frames, body num, 3]
-#         body_positions_2 = target.get_all_references()[2][0, :, env.motion_body_indexes] # [frames, body num, 3]
-#         dof_velocities_2 = target.get_all_references()[1][0, :, env.motion_dof_indexes] # [frames, dof num]
-#     elif "Articulation" in cls1 and "Articulation" in cls2:
-#         body_positions_1 = ego.data.body_pos_w # [envs, body num, 3]
-#         body_positions_2 = target.data.body_pos_w # [envs, body num, 3]
-#         dof_velocities_2 = target.data.joint_vel # [envs, dof num]
-#     instances, keys = body_positions_1.shape[0], len(env.key_body_indexes)
+    if "MotionLoader" in cls1 and "MotionLoader" in cls2:
+        body_positions_1 = ego.get_all_references()[2][0, :, env.motion_body_indexes] # [frames, body num, 3]
+        body_positions_2 = target.get_all_references()[2][0, :, env.motion_body_indexes] # [frames, body num, 3]
+    elif "Articulation" in cls1 and "Articulation" in cls2:
+        body_positions_1 = ego.data.body_pos_w # [envs, body num, 3]
+        body_positions_2 = target.data.body_pos_w # [envs, body num, 3]
+    instances, keys = body_positions_1.shape[0], len(env.key_body_indexes)
 
-#     # key bodies
-#     body_positions_1 = body_positions_1[:, env.key_body_indexes] # [frames or envs, key body num, 3]
-#     body_positions_2 = body_positions_2[:, env.key_body_indexes] # [frames or envs, key body num, 3]
+    # key bodies
+    body_positions_1 = body_positions_1[:, env.key_body_indexes] # [frames or envs, key body num, 3]
+    body_positions_2 = body_positions_2[:, env.key_body_indexes] # [frames or envs, key body num, 3]
 
-#     # calculate pairwise distance
-#     body_positions_1_expand = body_positions_1.unsqueeze(2)  # [frames or envs, body_num, 1, 3]
-#     body_positions_2_expand = body_positions_2.unsqueeze(1)  # [frames or envs, 1, body_num, 3]
-#     diff = body_positions_1_expand - body_positions_2_expand  # [frames or envs, body_num, body_num, 3]
-#     relative_positions = diff.view(instances, -1)  # [frames or envs, body_num * body_num * 3]
-#     pairwise_joint_distance = torch.norm(relative_positions.reshape(instances, -1, 3), dim=-1)
+    # calculate pairwise distance
+    body_positions_1_expand = body_positions_1.unsqueeze(2)  # [frames or envs, body_num, 1, 3]
+    body_positions_2_expand = body_positions_2.unsqueeze(1)  # [frames or envs, 1, body_num, 3]
+    diff = body_positions_1_expand - body_positions_2_expand  # [frames or envs, body_num, body_num, 3]
+    relative_positions = diff.view(instances, -1)  # [frames or envs, body_num * body_num * 3]
 
-#     # concatenate with dof velocities
-#     interaction = torch.cat([dof_velocities_2, pairwise_joint_distance], dim=-1)  # [frames or envs, interaction_space]
+    # concatenate with dof velocities
+    interaction = relative_positions.clone()  # [frames or envs, interaction_space]
 
-#     return interaction
+    return interaction
 
 # test: pjd3  relative body positions + relative body velocities
 # def compute_pairwise_joint_distance(env: "Env", ego: Union["MotionLoader", "Articulation"], target: Union["MotionLoader", "Articulation"], compute_weight: bool=False) -> torch.Tensor:

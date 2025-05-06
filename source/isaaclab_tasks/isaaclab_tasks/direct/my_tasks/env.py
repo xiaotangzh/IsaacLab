@@ -107,6 +107,7 @@ class Env(DirectRLEnv):
             self.motion_loader_2.pairwise_joint_distance = compute_pairwise_joint_distance(self, self.motion_loader_2, self.motion_loader_1)
             self.interaction_reward_weights = compute_interaction_env_weight(self, self.motion_loader_1, self.motion_loader_2)
             self.interaction_reward_weights += 1.0 #test:
+            self.interaction_reward_weights = None
 
             self.amp_inter_observation_size = self.cfg.num_amp_observations * self.cfg.amp_inter_observation_space
             self.amp_inter_observation_space = gym.spaces.Box(low=-np.inf, high=np.inf, shape=(self.amp_inter_observation_size,))
