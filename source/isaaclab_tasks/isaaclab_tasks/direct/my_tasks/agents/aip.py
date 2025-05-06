@@ -327,8 +327,8 @@ class AIP(BaseAgent):
             interaction_reward_weights = infos["interaction_reward_weights"]
 
             # if two robots
+            actual_num_envs = rewards.shape[0]
             if states.shape[0] != rewards.shape[0]:
-                actual_num_envs = rewards.shape[0]
                 rewards = rewards.repeat(2, 1) #todo: 2 robot task rewards can be different, replace repeat with expand
                 truncated = truncated.repeat(2, 1)
                 interaction_reward_weights = interaction_reward_weights.repeat(2, 1)

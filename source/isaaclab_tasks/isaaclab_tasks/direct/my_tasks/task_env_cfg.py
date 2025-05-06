@@ -67,8 +67,12 @@ class AIP_InterHuman_TestRobot(EnvCfg2RobotsSMPL):
     amp_inter_observation_space = interaction_space 
     interaction_modeling = True
     # key_body_names = ["L_Hand", "R_Hand", "Head", "L_Thorax", "R_Thorax"] # rel_pos + rel_vel
-    key_body_names = ["L_Hand", "R_Hand", "L_Toe", "R_Toe", "Head" , "L_Shoulder", "R_Shoulder", "L_Hip", "R_Hip", "Torso"]
+    # key_body_names = ["L_Hand", "R_Hand", "L_Toe", "R_Toe", "Head" , "L_Shoulder", "R_Shoulder", "L_Hip", "R_Hip", "Torso"]
+    key_body_names = ["Head", "Torso", "L_Thorax", "R_Thorax", "L_Shoulder", "R_Shoulder", "L_Elbow", "R_Elbow", "L_Hand", "R_Hand"]
     # reward = ["energy_penalty"]
+    init_root_height = 0.0
+    action_clip = 0.1 #test:
+    require_sync_frame_index = True
 
 
 # SMPL body_names = ['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
