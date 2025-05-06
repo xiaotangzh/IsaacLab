@@ -69,6 +69,8 @@ class AIP_InterHuman_TestRobot(EnvCfg2RobotsSMPL):
     key_body_names = ["L_Hand", "R_Hand", "Head", "L_Thorax", "R_Thorax"]
     # reward = ["energy_penalty"]
 
+
+# SMPL body_names = ['Pelvis', 'L_Hip', 'L_Knee', 'L_Ankle', 'L_Toe', 'R_Hip', 'R_Knee', 'R_Ankle', 'R_Toe', 'Torso', 'Spine', 'Chest', 'Neck', 'Head', 'L_Thorax', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'L_Hand', 'R_Thorax', 'R_Shoulder', 'R_Elbow', 'R_Wrist', 'R_Hand']
 @configclass
 class AIP_InterHuman_2Robots(EnvCfg2RobotsSMPL):
     motion_file_1 = os.path.join(MOTIONS_DIR, "InterHuman_SMPL/26_1.npz")

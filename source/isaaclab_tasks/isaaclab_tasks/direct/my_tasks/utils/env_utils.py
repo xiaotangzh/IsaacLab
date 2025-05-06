@@ -108,9 +108,11 @@ def compute_interaction_env_weight(env: "Env", ego: "MotionLoader", target: "Mot
 
     # compute weight for each env
     interaction_reward_weights = compute_pairwise_joint_distance_weight(pairwise_joint_distance, sqrt=env.pjd_cfg["sqrt"], upper_bound=env.pjd_cfg["upper_bound"]).view(instances, -1)
+
     match env.pjd_cfg["weight_method"]:
         case "mean": interaction_reward_weights = torch.mean(interaction_reward_weights, dim=1)
         case "max" : interaction_reward_weights = torch.max(interaction_reward_weights, dim=1)[0]
+
     return interaction_reward_weights
 
 # test: pjd1 pairwise joint distance
@@ -135,9 +137,9 @@ def compute_pairwise_joint_distance(env: "Env", ego: Union["MotionLoader", "Arti
     body_positions_2_expand = body_positions_2.unsqueeze(1)  # [frames or envs, 1, body_num, 3]
     diff = body_positions_1_expand - body_positions_2_expand  # [frames or envs, body_num, body_num, 3]
     pairwise_joint_distance = torch.norm(diff, dim=-1).view(instances, -1) # [frames or envs, body_num * body_num]
-    
-    if env.pjd_cfg["weighted"]: 
-        pairwise_joint_distance = compute_pairwise_joint_distance_weight(pairwise_joint_distance, sqrt=env.pjd_cfg["sqrt"], upper_bound=env.pjd_cfg["upper_bound"]) # [frames or envs, body_num * body_num]
+
+    # shorter distance -> larger weight
+    pairwise_joint_distance = compute_pairwise_joint_distance_weight(pairwise_joint_distance, sqrt=env.pjd_cfg["sqrt"], upper_bound=env.pjd_cfg["upper_bound"]) # [frames or envs, body_num * body_num]
 
     return pairwise_joint_distance
 

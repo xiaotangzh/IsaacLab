@@ -131,7 +131,7 @@ def compute_batch_discriminator_loss(
     discriminator_loss = 0.5 * (
         nn.BCEWithLogitsLoss()(amp_cat_logits, torch.zeros_like(amp_cat_logits))
         + torch.nn.BCEWithLogitsLoss()(amp_motion_logits, torch.ones_like(amp_motion_logits))
-    ) * weight
+    )
 
     # discriminator logit regularization
     if agent._discriminator_logit_regularization_scale:
