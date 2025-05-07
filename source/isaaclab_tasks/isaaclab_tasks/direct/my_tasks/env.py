@@ -80,6 +80,7 @@ class Env(DirectRLEnv):
         # sync frame index to avoid exceeding the number of frames in dataset
         if self.cfg.sync_motion or self.cfg.require_sync_frame_index:
             self.cfg.episode_length_s = self.motion_loader_1.duration
+            self.cfg.init_root_apart = 0.0
 
         # set reference motions
         if self.cfg.sync_motion or "imitation" in self.cfg.reward:
@@ -421,7 +422,7 @@ class Env(DirectRLEnv):
             assert root_state_1 is not None
             direction = root_state[:, :2] - root_state_1[:, :2]
             root_state[:, :2] += self.cfg.init_root_apart * direction
-            
+
         # get DOFs state
         dof_pos = dof_positions[:, self.motion_dof_indexes]
         dof_vel = dof_velocities[:, self.motion_dof_indexes]
